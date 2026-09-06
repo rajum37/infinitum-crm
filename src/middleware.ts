@@ -77,6 +77,8 @@ export async function middleware(request: NextRequest) {
     "/api/auth/reset-password",
     "/api/auth/setup-account",
     "/api/auth/logout",
+    "/api/auth/signup",
+    "/api/public/plans",
     "/api/cron",
   ];
   const isPublicRoute = publicRoutes.some((route) =>
@@ -84,17 +86,34 @@ export async function middleware(request: NextRequest) {
   );
 
   const isPublicRegistration =
-    pathname === "/register" ||
+    pathname === "/signup" ||
+    pathname === "/super-admin-setup" ||
     (pathname === "/api/users" && request.method === "POST");
-
-  if (isPublicRoute || isPublicRegistration) {
-    return NextResponse.next();
-  }
 
   // Check for auth token in cookie or Authorization header
   const token =
     request.cookies.get("nexus-token")?.value ||
     request.headers.get("Authorization")?.replace("Bearer ", "");
+
+  // If visiting the root, redirect authenticated users to their dashboard,
+  // otherwise show the public landing page.
+  if (pathname === "/") {
+    if (token) {
+      const payload = await verifyJwtEdge(token, JWT_SECRET);
+      if (payload) {
+        if (payload.role === "SUPER_ADMIN") {
+          return NextResponse.redirect(new URL("/dashboard", request.url));
+        } else {
+          return NextResponse.redirect(new URL("/leads/metrics", request.url));
+        }
+      }
+    }
+    return NextResponse.next();
+  }
+
+  if (isPublicRoute || isPublicRegistration) {
+    return NextResponse.next();
+  }
 
   // If no token and trying to access protected route, redirect to login
   if (!token) {
@@ -143,6 +162,13 @@ export async function middleware(request: NextRequest) {
   const superAdminOnlyRoutes = [
     "/admin/admin-management",
     "/admin/permissions",
+    "/admin/organizations",
+    "/admin/plans",
+    "/admin/features",
+    "/admin/subscriptions",
+    "/admin/billing",
+    "/admin/usage",
+    "/admin/entitlements",
     "/settings/api-keys",
     "/api/settings/api-keys",
   ];

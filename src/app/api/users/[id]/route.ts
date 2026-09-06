@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload, requireRole } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, requireRole, requireAuthenticatedUser } from "@/lib/auth";
 import { logAuditEvent } from "@/lib/audit";
 import { createPasswordResetToken } from "@/lib/tokens";
 import { sendPasswordResetEmail } from "@/lib/mail";
@@ -50,10 +50,9 @@ async function syncCompanyStatus(companyId?: string | null, companyName?: string
 /** GET /api/users/[id] — Get a specific user */
 export async function GET(request: Request, { params }: RouteContext) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN", "ADMIN"]);
     if (roleError) return roleError;
@@ -84,10 +83,9 @@ export async function GET(request: Request, { params }: RouteContext) {
 /** PUT /api/users/[id] — Update a user */
 export async function PUT(request: Request, { params }: RouteContext) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN", "ADMIN"]);
     if (roleError) return roleError;
@@ -106,7 +104,8 @@ export async function PUT(request: Request, { params }: RouteContext) {
     const { id } = await params;
 
     const currentUser = await prisma.user.findUnique({
-      where: { id }
+      where: { id },
+      include: { companyRef: { select: { ownerUserId: true } } }
     });
     if (!currentUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
@@ -124,8 +123,17 @@ export async function PUT(request: Request, { params }: RouteContext) {
       }
     }
 
-    let resolvedCompanyId: string | null = companyId || currentUser.companyId;
-    let resolvedCompanyName: string | null = company || department || currentUser.company;
+    let resolvedCompanyId: string | null = companyId || null;
+    let resolvedCompanyName: string | null = company || department || null;
+
+    if (payload?.role !== "SUPER_ADMIN") {
+      const adminUser = await prisma.user.findUnique({
+        where: { id: payload!.userId },
+        select: { companyId: true, company: true, department: true }
+      });
+      resolvedCompanyId = adminUser?.companyId || null;
+      resolvedCompanyName = adminUser?.company || adminUser?.department || null;
+    }
 
     if (companyId) {
       const comp = await (prisma as any).company.findUnique({ where: { id: companyId } });
@@ -142,6 +150,17 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
     const targetIsActive = isActive !== undefined ? isActive : status ? status === "ACTIVE" : currentUser.isActive;
     const targetStatus: UserStatus = status ? (status as UserStatus) : targetIsActive ? "ACTIVE" : "INACTIVE";
+
+    // Owner Protections
+    const isOwner = currentUser.companyRef?.ownerUserId === id;
+    if (isOwner) {
+      if (updateRole === "USER") {
+        return NextResponse.json({ error: "The owner of the organization must be an ADMIN and cannot be demoted." }, { status: 400 });
+      }
+      if (!targetIsActive) {
+        return NextResponse.json({ error: "The owner of the organization cannot be deactivated." }, { status: 400 });
+      }
+    }
 
     if (targetIsActive) {
       if (currentUser.createdBy) {
@@ -226,10 +245,9 @@ export async function PUT(request: Request, { params }: RouteContext) {
 /** DELETE /api/users/[id] — Soft-delete, restore, or permanently remove a user */
 export async function DELETE(request: Request, { params }: RouteContext) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN", "ADMIN"]);
     if (roleError) return roleError;
@@ -244,11 +262,18 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     const hardDelete = url.searchParams.get("hard") === "true";
     const restore = url.searchParams.get("restore") === "true";
 
-    const targetUser = await prisma.user.findUnique({ where: { id } });
+    const targetUser = await prisma.user.findUnique({ 
+      where: { id },
+      include: { companyRef: { select: { ownerUserId: true } } } 
+    });
     if (!targetUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     if (payload.role === "ADMIN" && targetUser.createdBy !== payload.userId) {
       return NextResponse.json({ error: "Unauthorized access to this user" }, { status: 403 });
+    }
+
+    if (targetUser.companyRef?.ownerUserId === id) {
+      return NextResponse.json({ error: "The owner of the organization cannot be deleted. Transfer ownership first." }, { status: 400 });
     }
 
     // An Admin who still has Users under them cannot be deleted (soft or hard) — their
@@ -350,10 +375,9 @@ export async function DELETE(request: Request, { params }: RouteContext) {
 /** PATCH /api/users/[id] — Reset password, toggle status, or restore user */
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN", "ADMIN"]);
     if (roleError) return roleError;
@@ -464,7 +488,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
       const user = await prisma.user.findUnique({
         where: { id },
-        select: { id: true, name: true, email: true, role: true, isActive: true, status: true, companyId: true, company: true, createdBy: true },
+        select: { id: true, name: true, email: true, role: true, isActive: true, status: true, companyId: true, company: true, createdBy: true, companyRef: { select: { ownerUserId: true } } },
       });
       if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
@@ -474,6 +498,10 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
       const nextIsActive = !user.isActive;
       const nextStatus: UserStatus = nextIsActive ? "ACTIVE" : "INACTIVE";
+
+      if (user.companyRef?.ownerUserId === id && !nextIsActive) {
+        return NextResponse.json({ error: "The owner of the organization cannot be deactivated." }, { status: 400 });
+      }
 
       if (nextIsActive && user.createdBy) {
         const creatorAdmin = await prisma.user.findUnique({ where: { id: user.createdBy } });

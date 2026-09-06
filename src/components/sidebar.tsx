@@ -53,85 +53,24 @@ interface MenuSection {
 function getSuperAdminMenu(): MenuSection[] {
   return [
     {
-      label: "LEADS",
-      icon: <IconAddressBook size={18} />,
+      label: "PLATFORM",
+      icon: <IconBuildingCommunity size={18} />,
       items: [
-        { label: "Leads CRM", href: "/leads/crm" },
-        { label: "Lead Metrics", href: "/leads/metrics" },
-      ],
-    },
-    {
-      label: "SALES",
-      icon: <IconChartBar size={18} />,
-      items: [
-        { label: "Sales Pipeline", href: "/sales/pipeline" },
-        { label: "Sales CRM", href: "/sales/crm" },
-        { label: "Sales Metrics", href: "/sales/metrics" },
-      ],
-    },
-    {
-      label: "OFFER",
-      icon: <IconGift size={18} />,
-      items: [
-        { label: "Offer Creation", href: "/offer/creation" },
-        { label: "Revenue Operations", href: "/offer/revenue-generator" },
-        { label: "Ideas Backlog", href: "/offer/ideas-backlog" },
-      ],
-    },
-    {
-      label: "DOCUMENTS",
-      icon: <IconFileText size={18} />,
-      items: [
-        { label: "Proposals", href: "/documents/proposals" },
-        { label: "Contracts", href: "/documents/contracts" },
-        { label: "Invoices", href: "/documents/invoices" },
-        { label: "Templates", href: "/documents/templates" },
-      ],
-    },
-    {
-      label: "FINANCES",
-      icon: <IconCash size={18} />,
-      items: [
-        { label: "Financial Dashboard", href: "/finances/dashboard" },
-        { label: "Cash In", href: "/finances/cash-in" },
-        { label: "Cash Out", href: "/finances/cash-out" },
-        { label: "Receivables", href: "/finances/receivables" },
-      ],
-    },
-    {
-      label: "OPERATIONS",
-      icon: <IconCheckbox size={18} />,
-      items: [
-        { label: "Onboarding", href: "/operations/onboarding" },
-        { label: "Project Management", href: "/operations/fulfillment" },
-        { label: "Custom Reports", href: "/operations/custom-reports" },
-      ],
-    },
-    {
-      label: "AI & AUTOMATION",
-      icon: <IconRobot size={18} />,
-      items: [
-        { label: "AI Content Companion", href: "/ai-tools/content-companion" },
-        { label: "Email Assistant", href: "/ai-tools/email-assistant" },
-        { label: "Lead Scoring", href: "/ai-tools/lead-scoring" },
-      ],
-    },
-    {
-      label: "ADMINISTRATION",
-      icon: <IconUserShield size={18} />,
-      items: [
-        { label: "Company Management", href: "/admin/company-management" },
-        { label: "Admin Management", href: "/admin/admin-management" },
-        { label: "User Management", href: "/admin/user-management" },
-        { label: "Archive", href: "/admin/archive" },
+        { label: "Dashboard", href: "/dashboard" },
+        { label: "Organizations", href: "/admin/organizations" },
+        { label: "Plans", href: "/admin/plans" },
+        { label: "Features", href: "/admin/features" },
+        { label: "Entitlements", href: "/admin/entitlements" },
+        { label: "Usage", href: "/admin/usage" },
+        { label: "Billing", href: "/admin/billing" },
         { label: "Audit Logs", href: "/admin/audit-logs" },
       ],
     },
     {
-      label: "SYSTEM CONFIG",
+      label: "SYSTEM",
       icon: <IconTool size={18} />,
       items: [
-        { label: "Menu", href: "/admin/permissions" },
+        { label: "Menu Permissions", href: "/admin/permissions" },
         { label: "API Keys", href: "/settings/api-keys" },
       ],
     },
@@ -161,6 +100,13 @@ function getAdminMenu(): MenuSection[] {
     //     { label: "Archive", href: "/admin/archive" },
     //   ],
     // },
+    {
+      label: "SETTINGS",
+      icon: <IconSettings size={18} />,
+      items: [
+        { label: "Subscription", href: "/settings/subscription" },
+      ],
+    },
   ];
 }
 
@@ -259,9 +205,13 @@ const ROLE_BADGE: Record<string, { label: string; color: string }> = {
 
 // ─── Sidebar component ────────────────────────────────────────────────────────
 
-let permissionsPromise: Promise<any> | null = null;
-
-export function Sidebar({ onClose }: { onClose?: () => void } = {}) {
+export function Sidebar({
+  onClose,
+  permissions,
+}: {
+  onClose?: () => void;
+  permissions?: Record<string, boolean>;
+} = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
@@ -274,42 +224,7 @@ export function Sidebar({ onClose }: { onClose?: () => void } = {}) {
   const { user, logout } = useAuthStore();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
-  // Lazy initializer for dbPermissions to avoid flash
-  const [dbPermissions, setDbPermissions] = useState<any>(() => {
-    if (typeof document !== "undefined") {
-      const match = document.cookie.match(new RegExp('(^| )nexus-role-permissions=([^;]+)'));
-      if (match) {
-        try {
-          return JSON.parse(decodeURIComponent(match[2]));
-        } catch (e) { }
-      }
-    }
-    return null;
-  });
 
-  useEffect(() => {
-    if (!permissionsPromise) {
-      permissionsPromise = fetch("/api/settings/permissions", { credentials: "same-origin" })
-        .then((res) => {
-          if (!res.ok) throw new Error("API not ok");
-          return res.json();
-        })
-        .catch((err) => {
-          permissionsPromise = null; // reset on error so we can retry
-          throw err;
-        });
-    }
-
-    permissionsPromise
-      .then((data) => {
-        if (data && typeof data === "object" && !data.error && Object.keys(data).length > 0) {
-          setDbPermissions(data);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to load permissions in sidebar:", err);
-      });
-  }, []);
 
   // Compute effective user role immediately without fallback flicker to USER
   const effectiveRole = useMemo(() => {
@@ -332,8 +247,8 @@ export function Sidebar({ onClose }: { onClose?: () => void } = {}) {
     const role = effectiveRole;
     const rawSections = role === "SUPER_ADMIN" ? getSuperAdminMenu() : role === "ADMIN" ? getAdminMenu() : getUserMenu();
 
-    // Use dbPermissions if available, otherwise use DEFAULT_PERMISSIONS
-    const activePermissions = dbPermissions || DEFAULT_PERMISSIONS;
+    // Use server-passed permissions if available, otherwise use DEFAULT_PERMISSIONS
+    const activePermissions = permissions || DEFAULT_PERMISSIONS;
 
     return rawSections
       .map((section) => {
@@ -371,7 +286,7 @@ export function Sidebar({ onClose }: { onClose?: () => void } = {}) {
         };
       })
       .filter((sec): sec is MenuSection => sec !== null);
-  }, [effectiveRole, dbPermissions]);
+  }, [effectiveRole, permissions]);
 
   // Auto-expand the section matching current route
   useEffect(() => {
@@ -425,7 +340,7 @@ export function Sidebar({ onClose }: { onClose?: () => void } = {}) {
   return (
     <aside className="w-64 sm:w-[240px] h-screen sticky top-0 shrink-0 bg-nexus-card border-r border-nexus-border flex flex-col overflow-hidden">
       <div className="h-16 shrink-0 px-4 sm:px-5 border-b border-nexus-border flex items-center justify-between">
-        <Link href="/" onClick={onClose} className="flex items-center gap-2.5">
+        <Link href="/dashboard" onClick={onClose} className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#10D078] to-emerald-400 flex items-center justify-center shadow-lg shadow-[#10D078]/25 text-black">
             <IconInfinity size={22} stroke={2.5} />
           </div>
@@ -443,18 +358,18 @@ export function Sidebar({ onClose }: { onClose?: () => void } = {}) {
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-1">
         {/* Dashboard */}
-        <Link
-          href={effectiveRole === "ADMIN" || effectiveRole === "USER" ? "/leads/metrics" : "/"}
+        {/* <Link
+          href={effectiveRole === "ADMIN" || effectiveRole === "USER" ? "/leads/metrics" : "/dashboard"}
           onClick={onClose}
-          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors ${(effectiveRole === "ADMIN" || effectiveRole === "USER" ? pathname === "/leads/metrics" : pathname === "/")
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors ${(effectiveRole === "ADMIN" || effectiveRole === "USER" ? pathname === "/leads/metrics" : pathname === "/dashboard")
             ? "text-[#10D078] bg-[#10D078]/10"
             : "text-nexus-text-secondary hover:text-nexus-text hover:bg-nexus-hover"
             }`}
         >
           <IconLayoutDashboard size={18} />
           <span className="hidden sm:inline">Dashboard</span>
-          <span className="sm:hidden">Dash</span>
-        </Link>
+          <span className="sm:hidden">Dashboard</span>
+        </Link> */}
 
         {/* Collapsible Accordion Sections */}
         {menuSections.map((section) => {

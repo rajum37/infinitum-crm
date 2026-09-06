@@ -219,11 +219,7 @@ export async function getTenantWhereClauseAsync(payload: JWTPayload | null) {
       orConditions.push({ user: { companyId } });
       orConditions.push({ companyId });
     }
-
-    if (companyName && companyName.trim() !== "") {
-      orConditions.push({ user: { company: { equals: companyName, mode: "insensitive" } } });
-      orConditions.push({ company: { equals: companyName, mode: "insensitive" } }); // for models where company field exists
-    }
+    // DEPRECATED: fuzzy string matching fallback removed for strict tenant isolation
 
     return { OR: orConditions };
   }
@@ -279,11 +275,7 @@ export async function getUserTenantWhereClauseAsync(payload: JWTPayload | null) 
     if (companyId) {
       orConditions.push({ companyId });
     }
-
-    if (companyName && companyName.trim() !== "") {
-      orConditions.push({ company: { equals: companyName, mode: "insensitive" } });
-      orConditions.push({ department: { equals: companyName, mode: "insensitive" } });
-    }
+    // DEPRECATED: fuzzy string matching fallback removed for strict tenant isolation
 
     return { OR: orConditions };
   }
@@ -304,4 +296,88 @@ export function requireRole(
     );
   }
   return null;
+}
+/**
+ * Global authentication and authorization guard.
+ * Extracts token, verifies it, loads the User and Company from the database,
+ * and ensures they are both ACTIVE. Returns a 401 Response if inactive.
+ * Optionally checks if the user's role is within allowedRoles, returning 403 if not.
+ */
+export async function requireAuthenticatedUser(
+  request: Request,
+  allowedRoles?: Role[]
+): Promise<{ user: any; payload: JWTPayload } | Response> {
+  const token = extractTokenFromRequest(request);
+  if (!token) {
+    return new Response(JSON.stringify({ error: "Authentication required" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const payload = getTokenPayload(token);
+  if (!payload) {
+    return new Response(JSON.stringify({ error: "Invalid token" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    include: { companyRef: true },
+  });
+
+  if (!user) {
+    return new Response(JSON.stringify({ error: "User not found" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (!user.isActive || user.status === "INACTIVE") {
+    return new Response(JSON.stringify({ error: "Account deactivated" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (user.role !== "SUPER_ADMIN") {
+    const compId = user.companyId || user.companyRef?.id;
+    const compName = user.company || user.department;
+
+    if (user.companyRef) {
+      if (!user.companyRef.isActive || user.companyRef.status === "INACTIVE") {
+        return new Response(JSON.stringify({ error: "Company deactivated" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    } else if (compId || compName) {
+      const company = await prisma.company.findFirst({
+        where: {
+          OR: [
+            compId ? { id: compId } : undefined,
+            compName ? { name: { equals: compName, mode: "insensitive" } } : undefined,
+          ].filter(Boolean) as any,
+        },
+      });
+
+      if (company && (!company.isActive || company.status === "INACTIVE")) {
+        return new Response(JSON.stringify({ error: "Company deactivated" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role as Role)) {
+    return new Response(JSON.stringify({ error: "Insufficient permissions" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return { user, payload };
 }

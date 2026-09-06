@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import {
-  registerUser,
+import { registerUser,
   extractTokenFromRequest,
   getTokenPayload,
-  requireRole,
-} from "@/lib/auth";
+  requireRole, requireAuthenticatedUser } from "@/lib/auth";
 import { createAccountSetupToken } from "@/lib/tokens";
 import { sendAdminInvitationEmail, sendUserInvitationEmail } from "@/lib/mail";
 import { logAuditEvent } from "@/lib/audit";
@@ -483,6 +481,15 @@ export async function POST(request: Request) {
 
     let resolvedCompanyId: string | null = companyId || null;
     let resolvedCompanyName: string | null = company || department || null;
+
+    if (!isPublicRegistration && payload?.role !== "SUPER_ADMIN") {
+      const adminUser = await prisma.user.findUnique({
+        where: { id: payload!.userId },
+        select: { companyId: true, company: true, department: true }
+      });
+      resolvedCompanyId = adminUser?.companyId || null;
+      resolvedCompanyName = adminUser?.company || adminUser?.department || null;
+    }
 
     if (resolvedCompanyId) {
       const comp = await (prisma as any).company.findUnique({

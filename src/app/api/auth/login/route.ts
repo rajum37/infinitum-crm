@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loginUser, generateToken } from "@/lib/auth";
+import { loginUser, generateToken, requireAuthenticatedUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent, getIpFromRequest } from "@/lib/audit";
 import { mergePermissionsForRole, getDefaultPermissionsForRole } from "@/lib/permissions";

@@ -69,7 +69,7 @@ export default function DailyReportsPage() {
   const smartAlerts = [
     { id: "1", type: "CRITICAL", text: "John's call volume ↓50% vs last week (15 calls vs avg 32)", time: "10 mins ago" },
     { id: "2", type: "WARNING", text: "Maria blocked on contract e-signature verification with Lmnopq Corp", time: "1 hour ago" },
-    { id: "3", type: "INFO", text: "Tim is pacing at 60% of monthly quota — requires manager assistance", time: "2 hours ago" },
+    { id: "3", type: "INFO", text: "Tim is pacing at 60% of monthly quota — requires admin assistance", time: "2 hours ago" },
   ];
 
   return (
@@ -179,7 +179,6 @@ export default function DailyReportsPage() {
               >
                 <option value="Setter">Setter</option>
                 <option value="Closer">Closer</option>
-                <option value="Manager">Manager</option>
               </select>
             </div>
           </div>
