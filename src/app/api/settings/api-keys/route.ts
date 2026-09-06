@@ -1,17 +1,15 @@
 import { hasFeature } from "@/lib/subscription";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload, requireRole } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, requireRole, requireAuthenticatedUser } from "@/lib/auth";
 import { logAuditEvent } from "@/lib/audit";
 
 /** GET /api/settings/api-keys — List all API keys (Super Admin only) */
 export async function GET(request: Request) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
     if (roleError) return roleError;
@@ -53,11 +51,9 @@ export async function GET(request: Request) {
 /** POST /api/settings/api-keys — Create or Update an API key (Super Admin only) */
 export async function POST(request: Request) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
     if (roleError) return roleError;
@@ -106,11 +102,9 @@ export async function POST(request: Request) {
 /** DELETE /api/settings/api-keys — Delete an API key (Super Admin only) */
 export async function DELETE(request: Request) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
     if (roleError) return roleError;

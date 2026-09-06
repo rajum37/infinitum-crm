@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { extractTokenFromRequest, getTokenPayload } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, requireAuthenticatedUser } from "@/lib/auth";
 import { logAuditEvent, getIpFromRequest } from "@/lib/audit";
 import { clearSession } from "@/lib/session-limit";
 

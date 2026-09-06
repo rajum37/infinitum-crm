@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, requireAuthenticatedUser } from "@/lib/auth";
 import { touchSession } from "@/lib/session-limit";
 
 export const dynamic = "force-dynamic";

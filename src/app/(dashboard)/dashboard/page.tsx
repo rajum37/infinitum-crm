@@ -9,6 +9,9 @@ import {
   IconLayoutDashboard,
   IconActivity,
   IconChevronRight,
+  IconTarget,
+  IconFileDescription,
+  IconReceipt,
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -20,7 +23,7 @@ interface AuditLogEntry {
   actorName: string;
   actorEmail: string;
   targetName?: string;
-  summary: string;
+  summary?: string;
   severity: "INFO" | "SUCCESS" | "WARNING" | "DANGER";
   createdAt: string;
 }
@@ -48,12 +51,19 @@ export default function DashboardPage() {
   const { user } = useAuthStore();
   const [isMounted, setIsMounted] = useState(false);
 
+  // Super Admin Stats
   const [companyCount, setCompanyCount] = useState(0);
-  const [activeCompanyCount, setActiveCompanyCount] = useState(0);
-  const [adminCount, setAdminCount] = useState(0);
-  const [userCount, setUserCount] = useState(0);
-  const [activeLeadsCount, setActiveLeadsCount] = useState(0);
-  const [recentActivity, setRecentActivity] = useState<AuditLogEntry[]>([]);
+  const [planCount, setPlanCount] = useState(0);
+  const [featureCount, setFeatureCount] = useState(0);
+
+  // Customer Stats
+  const [leadCount, setLeadCount] = useState(0);
+  const [dealCount, setDealCount] = useState(0);
+  const [offerCount, setOfferCount] = useState(0);
+  const [documentCount, setDocumentCount] = useState(0);
+
+  // Shared Activities (Audit Logs for Super Admin, Activities for Customer)
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const effectiveRole =
@@ -64,16 +74,8 @@ export default function DashboardPage() {
     setIsMounted(true);
   }, []);
 
-  // Admin and User both have their own dedicated dashboard at Lead Metrics — this page is
-  // Super Admin's dashboard only.
   useEffect(() => {
-    if (isMounted && (effectiveRole === "ADMIN" || effectiveRole === "USER")) {
-      router.replace("/leads/metrics");
-    }
-  }, [isMounted, effectiveRole, router]);
-
-  useEffect(() => {
-    if (!isMounted || effectiveRole !== "SUPER_ADMIN") return;
+    if (!isMounted || !effectiveRole) return;
 
     async function fetchOverview() {
       setLoading(true);
@@ -81,37 +83,46 @@ export default function DashboardPage() {
         const token = localStorage.getItem("nexus-token");
         const headers = { Authorization: `Bearer ${token}` };
 
-        const [companiesRes, usersRes, statsRes, auditRes] = await Promise.all([
-          fetch("/api/companies", { headers }),
-          fetch("/api/users?grouped=true", { headers }),
-          fetch("/api/dashboard/stats", { headers }),
-          fetch("/api/audit-logs", { headers }),
-        ]);
+        if (effectiveRole === "SUPER_ADMIN") {
+          const [statsRes, auditRes] = await Promise.all([
+            fetch("/api/admin/stats", { headers }),
+            fetch("/api/audit-logs?limit=10", { headers }),
+          ]);
 
-        if (companiesRes.ok) {
-          const companies = await companiesRes.json();
-          setCompanyCount(companies.length);
-          setActiveCompanyCount(companies.filter((c: any) => c.isActive).length);
-        }
+          if (statsRes.ok) {
+            const stats = await statsRes.json();
+            setCompanyCount(stats.totalOrganizations ?? 0);
+            setPlanCount(stats.totalPlans ?? 0);
+            setFeatureCount(stats.totalFeatures ?? 0);
+          }
 
-        if (usersRes.ok) {
-          const { allUsers } = await usersRes.json();
-          const active = (allUsers || []).filter((u: any) => !u.isDeleted);
-          setAdminCount(active.filter((u: any) => u.role === "ADMIN" || u.role === "SUPER_ADMIN").length);
-          setUserCount(active.filter((u: any) => u.role === "USER").length);
-        }
-
-        if (statsRes.ok) {
-          const stats = await statsRes.json();
-          setActiveLeadsCount(stats.activeLeads ?? 0);
-        }
-
-        if (auditRes.ok) {
-          const logs = await auditRes.json();
-          setRecentActivity((logs || []).slice(0, 8));
+          if (auditRes.ok) {
+            const logs = await auditRes.json();
+            setRecentActivity(logs || []);
+          }
+        } else {
+          // Admin or User -> Customer Dashboard
+          const statsRes = await fetch("/api/dashboard/stats", { headers });
+          if (statsRes.ok) {
+            const stats = await statsRes.json();
+            setLeadCount(stats.leadCount ?? 0);
+            setDealCount(stats.dealCount ?? 0);
+            setOfferCount(stats.offerCount ?? 0);
+            setDocumentCount(stats.documentCount ?? 0);
+            
+            // Format recent activities for unified rendering
+            const activities = (stats.recentActivities || []).slice(0, 10).map((act: any) => ({
+              id: act.id,
+              summary: act.description || `${act.type} logged`,
+              actorName: act.user?.name || "System",
+              createdAt: act.createdAt,
+              severity: "INFO",
+            }));
+            setRecentActivity(activities);
+          }
         }
       } catch (err) {
-        console.error("Error fetching platform overview:", err);
+        console.error("Error fetching overview:", err);
       } finally {
         setLoading(false);
       }
@@ -120,7 +131,7 @@ export default function DashboardPage() {
     fetchOverview();
   }, [isMounted, effectiveRole]);
 
-  if (!isMounted || effectiveRole === "ADMIN" || effectiveRole === "USER") {
+  if (!isMounted) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
         <div className="w-6 h-6 border-2 border-[#10D078] border-t-transparent rounded-full animate-spin" />
@@ -128,40 +139,70 @@ export default function DashboardPage() {
     );
   }
 
-  const cards = [
-    {
-      label: "Companies",
-      value: `${activeCompanyCount}/${companyCount}`,
-      sub: "Active / Total",
-      icon: IconBuildingSkyscraper,
-      color: "text-[#38BDF8] bg-[#03203C] border-[#0A3A6B]",
-      href: "/admin/company-management",
-    },
-    {
-      label: "Admins",
-      value: adminCount,
-      sub: "Across all companies",
-      icon: IconUserShield,
-      color: "text-orange-400 bg-[#3A2308] border-[#6B440A]",
-      href: "/admin/admin-management",
-    },
-    {
-      label: "Users",
-      value: userCount,
-      sub: "Across all companies",
-      icon: IconUsers,
-      color: "text-[#C084FC] bg-[#2E1065] border-[#4C1D95]",
-      href: "/admin/user-management",
-    },
-    {
-      label: "Active Leads",
-      value: activeLeadsCount,
-      sub: "Platform-wide",
-      icon: IconAddressBook,
-      color: "text-[#10D078] bg-[#063022] border-[#0C583E]",
-      href: "/leads/crm",
-    },
-  ];
+  const isSuperAdmin = effectiveRole === "SUPER_ADMIN";
+
+  const cards = isSuperAdmin
+    ? [
+        {
+          label: "Organizations",
+          value: companyCount,
+          sub: "Total registered",
+          icon: IconBuildingSkyscraper,
+          color: "text-[#38BDF8] bg-[#03203C] border-[#0A3A6B]",
+          href: "/admin/organizations",
+        },
+
+        {
+          label: "Plans",
+          value: planCount,
+          sub: "Platform plans",
+          icon: IconUsers,
+          color: "text-[#C084FC] bg-[#2E1065] border-[#4C1D95]",
+          href: "/admin/plans",
+        },
+        {
+          label: "Features",
+          value: featureCount,
+          sub: "Platform features",
+          icon: IconAddressBook,
+          color: "text-orange-400 bg-[#3A2308] border-[#6B440A]",
+          href: "/admin/features",
+        },
+      ]
+    : [
+        {
+          label: "Total Leads",
+          value: leadCount,
+          sub: "All time leads",
+          icon: IconUsers,
+          color: "text-[#38BDF8] bg-[#03203C] border-[#0A3A6B]",
+          href: "/leads/crm",
+        },
+        {
+          label: "Total Deals",
+          value: dealCount,
+          sub: "Active pipeline deals",
+          icon: IconTarget,
+          color: "text-[#10D078] bg-[#063022] border-[#0C583E]",
+          href: "/sales/pipeline",
+        },
+        {
+          label: "Total Offers",
+          value: offerCount,
+          sub: "Proposals sent",
+          icon: IconReceipt,
+          color: "text-[#C084FC] bg-[#2E1065] border-[#4C1D95]",
+          href: "/offer/revenue-generator",
+        },
+        {
+          label: "Total Documents",
+          value: documentCount,
+          sub: "Files uploaded",
+          icon: IconFileDescription,
+          color: "text-orange-400 bg-[#3A2308] border-[#6B440A]",
+          href: "/documents/files",
+        },
+      ];
 
   return (
     <div className="space-y-6 text-nexus-text font-sans">
@@ -173,7 +214,9 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-nexus-text tracking-tight">Dashboard</h1>
           <p className="text-xs text-nexus-text-secondary">
-            Platform-wide overview across all companies, admins, and users.
+            {isSuperAdmin
+              ? "Platform-wide overview across all companies, admins, and users."
+              : "Overview of your company's CRM metrics and recent activity."}
           </p>
         </div>
       </div>
@@ -207,12 +250,14 @@ export default function DashboardPage() {
             <IconActivity size={18} className="text-nexus-primary" />
             Recent Activity
           </h3>
-          <Link
-            href="/admin/audit-logs"
-            className="text-xs font-semibold text-nexus-primary hover:underline flex items-center gap-0.5"
-          >
-            View All <IconChevronRight size={14} />
-          </Link>
+          {isSuperAdmin && (
+            <Link
+              href="/admin/audit-logs"
+              className="text-xs font-semibold text-nexus-primary hover:underline flex items-center gap-0.5"
+            >
+              View All <IconChevronRight size={14} />
+            </Link>
+          )}
         </div>
 
         {loading ? (
@@ -223,7 +268,7 @@ export default function DashboardPage() {
           <div className="divide-y divide-[#151B2C]">
             {recentActivity.map((log) => (
               <div key={log.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${SEVERITY_DOT[log.severity] || "bg-nexus-muted"}`} />
+                <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${SEVERITY_DOT[log.severity] || "bg-sky-400"}`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-nexus-text truncate">{log.summary}</p>
                   <p className="text-[11px] text-nexus-muted mt-0.5">

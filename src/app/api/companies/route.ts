@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload, requireRole } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, requireRole, requireAuthenticatedUser } from "@/lib/auth";
 import { logAuditEvent } from "@/lib/audit";
 
 /** GET /api/companies — Fetch active/all companies or archived companies */
@@ -83,62 +83,4 @@ export async function GET(request: Request) {
   }
 }
 
-/** POST /api/companies — Create a new company (Superadmin only) */
-export async function POST(request: Request) {
-  try {
-    const token = extractTokenFromRequest(request);
-    if (!token) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    }
-    const payload = getTokenPayload(token);
-    if (!payload) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-    }
 
-    const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
-    if (roleError) return roleError;
-
-    const body = await request.json();
-    const { name, category, status } = body;
-
-    if (!name || !name.trim()) {
-      return NextResponse.json({ error: "Company name is required" }, { status: 400 });
-    }
-
-    const trimmedName = name.trim();
-
-    // Check duplicate
-    const existing = await (prisma as any).company.findFirst({
-      where: { name: { equals: trimmedName, mode: "insensitive" }, isDeleted: false },
-    });
-    if (existing) {
-      return NextResponse.json({ error: `Company "${trimmedName}" already exists` }, { status: 400 });
-    }
-
-    const company = await (prisma as any).company.create({
-      data: {
-        name: trimmedName,
-        category: category || "Technology & Software",
-        status: status || "ACTIVE",
-        isActive: status ? status === "ACTIVE" : true,
-        isDeleted: false,
-      },
-    });
-
-    await logAuditEvent({
-      action: "COMPANY_CREATED",
-      category: "Company Management",
-      severity: "SUCCESS",
-      actorName: payload.email.split("@")[0],
-      actorEmail: payload.email,
-      actorRole: payload.role,
-      targetName: company.name,
-      summary: `Created company ${company.name} (${company.id})`,
-    });
-
-    return NextResponse.json(company, { status: 201 });
-  } catch (error) {
-    console.error("POST /api/companies error:", error);
-    return NextResponse.json({ error: "Failed to create company" }, { status: 500 });
-  }
-}

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload, generateToken } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, generateToken, requireAuthenticatedUser } from "@/lib/auth";
 import { mergePermissionsForRole } from "@/lib/permissions";
 
 /**
@@ -13,11 +13,9 @@ import { mergePermissionsForRole } from "@/lib/permissions";
  */
 export async function POST(request: Request) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const config = await prisma.systemConfig.findUnique({ where: { key: "ROLE_PERMISSIONS" } });
     const dbPerms = config ? JSON.parse(config.value) : null;

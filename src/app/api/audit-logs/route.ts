@@ -1,7 +1,7 @@
 import { hasFeature } from "@/lib/subscription";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload, requireRole } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, requireRole, requireAuthenticatedUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,7 @@ export async function GET(request: Request) {
     const search    = searchParams.get("search") || "";
     const category  = searchParams.get("category") || "";
     const severity  = searchParams.get("severity") || "";
+    const limit     = searchParams.get("limit") ? parseInt(searchParams.get("limit") as string, 10) : 1000;
     const action    = searchParams.get("action") || "";
     const from      = searchParams.get("from") || "";
     const to        = searchParams.get("to") || "";
@@ -77,7 +78,7 @@ export async function GET(request: Request) {
     const logs = await prisma.auditLog.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: 1000,
+      take: limit,
     });
 
     // In-memory filtering for metadata fields that were moved out of schema

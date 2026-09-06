@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload, requireRole } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, requireRole, requireAuthenticatedUser } from "@/lib/auth";
 import { logAuditEvent } from "@/lib/audit";
 import { DEFAULT_PAGE_PERMISSIONS as DEFAULT_PERMISSIONS } from "@/lib/permissions";
 import { hasFeature } from "@/lib/subscription";
@@ -9,11 +9,9 @@ import { hasFeature } from "@/lib/subscription";
 /** GET /api/settings/permissions — Fetch dynamic role permissions */
 export async function GET(request: Request) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const config = await prisma.systemConfig.findFirst({
       where: { key: "ROLE_PERMISSIONS" }
@@ -45,11 +43,9 @@ export async function GET(request: Request) {
 /** POST /api/settings/permissions — Update role permissions matrix (Super Admin only) */
 export async function POST(request: Request) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     if (!(await hasFeature(payload.companyId, "ADVANCED_PERMISSIONS"))) {
       return NextResponse.json({ error: "FEATURE_NOT_AVAILABLE", featureCode: "ADVANCED_PERMISSIONS" }, { status: 403 });

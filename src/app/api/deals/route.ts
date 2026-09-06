@@ -1,15 +1,14 @@
-import { hasFeature } from "@/lib/subscription";
+import { requireFeature } from "@/lib/subscription";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload, getTenantWhereClauseAsync, getUserTenantWhereClauseAsync } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, getTenantWhereClauseAsync, getUserTenantWhereClauseAsync, requireAuthenticatedUser } from "@/lib/auth";
 import { logAuditEvent, getIpFromRequest } from "@/lib/audit";
 
 export async function GET(request: Request) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
@@ -79,10 +78,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
+
+    const featureError = await requireFeature(payload.companyId, "CRM_DEALS");
+    if (featureError) return featureError;
 
     const body = await request.json();
     const {

@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload, getTenantWhereClauseAsync } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, getTenantWhereClauseAsync, requireAuthenticatedUser } from "@/lib/auth";
 
 
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string, paymentId: string }> }) {
   const resolvedParams = await params;
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const tenantFilter = await getTenantWhereClauseAsync(payload);
     const lead = await prisma.lead.findFirst({ where: { id: resolvedParams.id, ...tenantFilter }, select: { id: true } });
@@ -65,12 +65,12 @@ import { extractTokenFromRequest, getTokenPayload, getTenantWhereClauseAsync } f
 }
 
 
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string, paymentId: string }> }) {
   const resolvedParams = await params;
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const tenantFilter = await getTenantWhereClauseAsync(payload);
     const lead = await prisma.lead.findFirst({ where: { id: resolvedParams.id, ...tenantFilter }, select: { id: true } });

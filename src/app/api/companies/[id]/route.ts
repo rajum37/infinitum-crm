@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { extractTokenFromRequest, getTokenPayload, requireRole } from "@/lib/auth";
+import { extractTokenFromRequest, getTokenPayload, requireRole, requireAuthenticatedUser } from "@/lib/auth";
 import { logAuditEvent } from "@/lib/audit";
 
 interface RouteContext {
@@ -10,10 +10,9 @@ interface RouteContext {
 /** PUT /api/companies/[id] — Update company details (Superadmin only) */
 export async function PUT(request: Request, { params }: RouteContext) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
     if (roleError) return roleError;
@@ -66,10 +65,9 @@ export async function PUT(request: Request, { params }: RouteContext) {
 /** PATCH /api/companies/[id] — Toggle status or restore from archive (Superadmin only) */
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
     if (roleError) return roleError;
@@ -155,10 +153,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 /** DELETE /api/companies/[id] — Soft-delete or permanently remove company */
 export async function DELETE(request: Request, { params }: RouteContext) {
   try {
-    const token = extractTokenFromRequest(request);
-    if (!token) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    const payload = getTokenPayload(token);
-    if (!payload) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    const auth = await requireAuthenticatedUser(request);
+    if (auth instanceof Response) return auth;
+    const { payload, user: authUser } = auth;
 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
     if (roleError) return roleError;
