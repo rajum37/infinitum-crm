@@ -78,12 +78,17 @@ export async function middleware(request: NextRequest) {
     "/api/auth/setup-account",
     "/api/auth/logout",
     "/api/auth/signup",
-    "/api/public/plans",
+    "/api/public",
     "/api/cron",
   ];
   const isPublicRoute = publicRoutes.some((route) =>
     pathname.startsWith(route),
   );
+
+  // If the request matches a public API, skip all auth checks
+  if (isPublicRoute) {
+    return NextResponse.next();
+  }
 
   const isPublicRegistration =
     pathname === "/signup" ||

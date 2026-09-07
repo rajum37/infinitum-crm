@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { IconKey, IconX, IconCopy, IconCheck, IconLoader2, IconInfinity, IconEye, IconEyeOff } from "@tabler/icons-react";
+import { apiClient } from "@/lib/apiClient";
 
 function LoginForm() {
   const router = useRouter();
@@ -52,17 +53,7 @@ function LoginForm() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Login failed");
-      }
+      const data = await apiClient.post("/api/auth/login", { email, password });
 
       setAuth(data.user, data.token);
       router.replace(redirect);
@@ -82,15 +73,7 @@ function LoginForm() {
     setIsForgotLoading(true);
     setForgotError("");
     try {
-      const res = await fetch("/api/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: forgotEmail }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to send reset link");
-      }
+      const data = await apiClient.post("/api/auth/forgot-password", { email: forgotEmail });
       // Generic message regardless of whether the email exists — prevents account enumeration.
       setForgotResult(data.message || "If an account exists for this email, we've sent password reset instructions.");
     } catch (err) {

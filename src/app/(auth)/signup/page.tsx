@@ -3,7 +3,8 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { IconBuildingSkyscraper, IconLoader2, IconAlertCircle, IconCheck } from "@tabler/icons-react";
+import { IconBuildingSkyscraper, IconLoader2, IconAlertCircle, IconCheck, IconEye, IconEyeOff } from "@tabler/icons-react";
+import { apiClient } from "@/lib/apiClient";
 import { getPriceDisplayInfo } from "@/lib/pricing";
 
 function SignupForm() {
@@ -65,23 +66,14 @@ function SignupForm() {
 
     setIsLoading(true);
     try {
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim(),
-          password,
-          companyName: companyName.trim(),
-          planCode: selectedPlanCode || undefined,
-          planPriceId: planPriceId || undefined,
-        }),
+      const data = await apiClient.post("/api/auth/signup", {
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        companyName: companyName.trim(),
+        planCode: selectedPlanCode || undefined,
+        planPriceId: planPriceId || undefined,
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create account");
-      }
 
       // Automatically authenticate the user with the returned JWT token
       if (data.token) {

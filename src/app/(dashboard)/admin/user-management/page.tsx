@@ -590,29 +590,27 @@ export default function UserManagementPage() {
 
   const [myAdminAccount, setMyAdminAccount] = useState<{ isActive: boolean; status: string } | null>(null);
 
+  useEffect(() => {
+    if (currentUser) {
+      setMyAdminAccount({ isActive: (currentUser as any).isActive ?? true, status: (currentUser as any).status ?? "ACTIVE" });
+    }
+  }, [currentUser]);
+
   // ── Fetch Data ────────────────────────────────────────────────────────────
 
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      useAuthStore.getState().fetchCurrentUser();
       const token = localStorage.getItem("nexus-token");
       const headers = { Authorization: `Bearer ${token}` };
 
-      const [compRes, userRes, meRes] = await Promise.all([
+      const [compRes, userRes] = await Promise.all([
         fetch("/api/companies", { headers, cache: "no-store" }),
         fetch(isSuperAdmin ? "/api/users?grouped=true" : "/api/users", { headers, cache: "no-store" }),
-        fetch("/api/auth/me", { headers, cache: "no-store" }),
       ]);
 
       const compData = await compRes.json();
       if (Array.isArray(compData)) setCompanies(compData);
-
-      if (meRes.ok) {
-        const meData = await meRes.json();
-        const meObj = meData.user || meData;
-        setMyAdminAccount({ isActive: meObj.isActive ?? true, status: meObj.status ?? "ACTIVE" });
-      }
 
       const data = await userRes.json();
       if (isSuperAdmin && data.admins) {
@@ -928,7 +926,7 @@ export default function UserManagementPage() {
         <SuccessPopup message={toast.msg} type="success" onClose={() => setToast(null)} />
       )}
       {toast && toast.type === "error" && (
-        <div className="fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl text-sm font-semibold transition-all bg-red-900/80 border-red-500/40 text-red-300">
+        <div className="fixed top-5 right-5 z-[9999] flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl text-sm font-semibold transition-all bg-red-900/80 border-red-500/40 text-red-300">
           <IconX size={16} />
           {toast.msg}
         </div>
@@ -1268,6 +1266,28 @@ export default function UserManagementPage() {
                       className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary font-mono tracking-wider"
                     />
                   </div>
+
+                  {(!isSuperAdmin || modalMode === "create") && (
+                    <div>
+                      <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Role *</label>
+                      <select
+                        value={formRole}
+                        onChange={(e) => setFormRole(e.target.value as "ADMIN" | "USER")}
+                        disabled={modalMode === "edit"}
+                        className={`w-full px-3 py-2 text-sm border rounded-lg text-nexus-text focus:outline-none ${
+                          modalMode === "edit"
+                            ? "bg-nexus-hover border-nexus-border text-nexus-muted cursor-not-allowed font-medium"
+                            : "bg-nexus-bg border-nexus-border focus:border-nexus-primary font-medium"
+                        }`}
+                      >
+                        {isSuperAdmin && <option value="SUPER_ADMIN">Super Admin</option>}
+                        {(isSuperAdmin || (companies.find(c => c.id === (currentUser?.companyId || myAdminObj?.companyId || ""))?.ownerUserId === currentUser?.id)) && (
+                          <option value="ADMIN">Admin</option>
+                        )}
+                        <option value="USER">User</option>
+                      </select>
+                    </div>
+                  )}
 
                   {isSuperAdmin && (
                     <div>

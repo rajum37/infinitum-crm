@@ -16,8 +16,8 @@ import { useAuthStore } from "@/store/auth";
 
 const ROLE_BADGE: Record<string, { label: string; color: string }> = {
   SUPER_ADMIN: { label: "Super Admin", color: "text-red-400 bg-red-500/10 border-red-500/25" },
-  ADMIN:       { label: "Admin",       color: "text-orange-400 bg-orange-500/10 border-orange-500/25" },
-  USER:        { label: "User",        color: "text-blue-400 bg-blue-500/10 border-blue-500/25" },
+  ADMIN: { label: "Admin", color: "text-orange-400 bg-orange-500/10 border-orange-500/25" },
+  USER: { label: "User", color: "text-blue-400 bg-blue-500/10 border-blue-500/25" },
 };
 
 interface TopHeaderProps {
@@ -41,7 +41,7 @@ export function TopHeader({ onMenuClick, showMenuButton }: TopHeaderProps = {}) 
       try {
         const userStr = localStorage.getItem("nexus-user");
         if (userStr) u = JSON.parse(userStr);
-      } catch (e) {}
+      } catch (e) { }
     }
     if (u?.role === "SUPER_ADMIN") {
       return { ...u, company: "", department: "", category: "" };
@@ -94,7 +94,7 @@ export function TopHeader({ onMenuClick, showMenuButton }: TopHeaderProps = {}) 
                 {effectiveUser?.company || effectiveUser?.department || "Company Workspace"}
               </h2>
               <p className="text-[10px] sm:text-[11px] text-[#10D078] font-bold mt-0.5">
-                {(effectiveUser as any)?.category || "General"}
+                {(effectiveUser as any)?.category || ""}
               </p>
             </>
           )}

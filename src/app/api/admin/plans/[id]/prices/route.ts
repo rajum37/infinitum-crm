@@ -5,7 +5,8 @@ import { logAuditEvent } from "@/lib/audit";
 import { BillingInterval } from "@prisma/client";
 
 // GET /api/admin/plans/[id]/prices - list all prices for a plan
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const auth = await requireAuthenticatedUser(request);
     if (auth instanceof Response) return auth;
@@ -13,11 +14,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
     if (roleError) return roleError;
 
-    const plan = await prisma.plan.findUnique({ where: { id: params.id } });
+    const plan = await prisma.plan.findUnique({ where: { id: id } });
     if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
 
     const prices = await prisma.planPrice.findMany({
-      where: { planId: params.id },
+      where: { planId: id },
       include: {
         _count: { select: { subscriptions: true } }
       },
@@ -32,7 +33,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
 }
 
 // POST /api/admin/plans/[id]/prices - create a new price version
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const auth = await requireAuthenticatedUser(request);
     if (auth instanceof Response) return auth;
@@ -40,7 +42,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
     if (roleError) return roleError;
 
-    const plan = await prisma.plan.findUnique({ where: { id: params.id } });
+    const plan = await prisma.plan.findUnique({ where: { id } });
     if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
 
     const body = await request.json();
@@ -98,7 +100,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     // Find latest version for this plan+interval combination
     const latest = await prisma.planPrice.findFirst({
-      where: { planId: params.id, billingInterval: billingInterval as BillingInterval },
+      where: { planId: id, billingInterval: billingInterval as BillingInterval },
       orderBy: { version: "desc" },
     });
     const nextVersion = latest ? latest.version + 1 : 1;
@@ -107,14 +109,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
     // If making a new version, mark all prior same-interval prices as NOT current (isDefault=false)
     if (isDefault && latest) {
       await prisma.planPrice.updateMany({
-        where: { planId: params.id, billingInterval: billingInterval as BillingInterval, isDefault: true },
+        where: { planId: id, billingInterval: billingInterval as BillingInterval, isDefault: true },
         data: { isDefault: false },
       });
     }
 
     const price = await prisma.planPrice.create({
       data: {
-        planId: params.id,
+        planId: id,
         code,
         version: nextVersion,
         billingInterval: billingInterval as BillingInterval,

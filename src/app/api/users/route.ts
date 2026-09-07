@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { registerUser,
+import {
+  registerUser,
   extractTokenFromRequest,
   getTokenPayload,
-  requireRole, requireAuthenticatedUser } from "@/lib/auth";
+  requireRole, requireAuthenticatedUser
+} from "@/lib/auth";
 import { createAccountSetupToken } from "@/lib/tokens";
 import { sendAdminInvitationEmail, sendUserInvitationEmail } from "@/lib/mail";
 import { logAuditEvent } from "@/lib/audit";
+import { getEffectiveEntitlements } from "@/lib/subscription";
 import type { Role } from "@prisma/client";
 
 async function syncCompanyStatus(
@@ -463,32 +466,50 @@ export async function POST(request: Request) {
       );
     }
 
-    let assignedRole: Role = isPublicRegistration ? "SUPER_ADMIN" : "USER";
-    if (
-      !isPublicRegistration &&
-      payload.role === "SUPER_ADMIN" &&
-      role &&
-      ["SUPER_ADMIN", "ADMIN", "USER"].includes(role)
-    ) {
-      assignedRole = role as Role;
-    } else if (
-      !isPublicRegistration &&
-      payload.role === "ADMIN" &&
-      role === "USER"
-    ) {
-      assignedRole = "USER";
-    }
-
     let resolvedCompanyId: string | null = companyId || null;
     let resolvedCompanyName: string | null = company || department || null;
+    let isOwner = false;
 
     if (!isPublicRegistration && payload?.role !== "SUPER_ADMIN") {
       const adminUser = await prisma.user.findUnique({
         where: { id: payload!.userId },
-        select: { companyId: true, company: true, department: true }
+        select: {
+          companyId: true,
+          company: true,
+          department: true,
+          ownedCompany: { select: { id: true } }
+        }
       });
+      debugger
       resolvedCompanyId = adminUser?.companyId || null;
       resolvedCompanyName = adminUser?.company || adminUser?.department || null;
+      isOwner = !!adminUser?.ownedCompany;
+    }
+
+    let assignedRole: Role = isPublicRegistration ? "SUPER_ADMIN" : "USER";
+
+    if (!isPublicRegistration) {
+      if (payload.role === "SUPER_ADMIN") {
+        if (role && ["SUPER_ADMIN", "ADMIN", "USER"].includes(role)) {
+          assignedRole = role as Role;
+        }
+      } else if (payload.role === "ADMIN") {
+        if (role === "ADMIN") {
+          if (isOwner) {
+            // Only the owner can create other admins
+            assignedRole = "ADMIN";
+          } else {
+            // Explicitly block non-owners from creating admins
+            return NextResponse.json(
+              { error: "Only the Company Owner can invite other Admins." },
+              { status: 403 }
+            );
+          }
+        } else {
+          // Regular admins can create USERs
+          assignedRole = "USER";
+        }
+      }
     }
 
     if (resolvedCompanyId) {
@@ -524,6 +545,30 @@ export async function POST(request: Request) {
       !isPublicRegistration && payload.role === "SUPER_ADMIN" && assignedAdminId
         ? assignedAdminId
         : payload?.userId;
+
+    // --- Entitlement / Limits Check ---
+    if (!isPublicRegistration && (assignedRole === "ADMIN" || assignedRole === "SUPER_ADMIN") && resolvedCompanyId) {
+      const entitlements = await getEffectiveEntitlements(resolvedCompanyId);
+      const maxAdminsFeature = entitlements.get("MAX_ADMINS");
+      
+      if (maxAdminsFeature && maxAdminsFeature.limitValue !== null) {
+        // Count existing admins (including pending ones, but ignoring deleted ones)
+        const currentAdminCount = await prisma.user.count({
+          where: {
+            companyId: resolvedCompanyId,
+            role: { in: ["ADMIN", "SUPER_ADMIN"] },
+            isDeleted: false,
+          }
+        });
+        
+        if (currentAdminCount >= Number(maxAdminsFeature.limitValue)) {
+          return NextResponse.json(
+            { error: `You have reached the maximum number of admins (${maxAdminsFeature.limitValue}) allowed on your current plan.` },
+            { status: 403 }
+          );
+        }
+      }
+    }
 
     const initialTempPassword = "12345678";
     const { user } = await registerUser(
