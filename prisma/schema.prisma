@@ -937,8 +937,6 @@ enum PlanStatus {
 }
 
 enum BillingInterval {
-  DAY
-  WEEK
   MONTH
   QUARTER
   HALF_YEAR

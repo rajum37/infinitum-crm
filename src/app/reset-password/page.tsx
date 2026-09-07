@@ -2,6 +2,7 @@
 
 import React, { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { apiClient } from "@/lib/apiClient";
 import {
   IconLock,
   IconEye,
@@ -58,14 +59,12 @@ function ResetPasswordPageClient() {
 
     async function checkToken() {
       try {
-        const res = await fetch(`/api/auth/reset-password?token=${encodeURIComponent(token!)}`);
-        const data = await res.json();
-        if (!res.ok) {
-          setLinkError({
-            message: data.error || "This password reset link has expired or is no longer valid.",
-            code: data.code || "INVALID",
-          });
-        }
+        await apiClient.get(`/api/auth/reset-password?token=${encodeURIComponent(token!)}`);
+      } catch (err: any) {
+        setLinkError({
+          message: err.message || "This password reset link has expired or is no longer valid.",
+          code: err.data?.code || "INVALID",
+        });
       } catch {
         setLinkError({ message: "Failed to verify reset link. Please try again.", code: "INVALID" });
       } finally {
@@ -94,15 +93,7 @@ function ResetPasswordPageClient() {
     setError(null);
 
     try {
-      const res = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "This password reset link has expired or is no longer valid.");
-      }
+      await apiClient.post("/api/auth/reset-password", { token, password });
       setSuccess(true);
     } catch (err: any) {
       setError(err.message || "An error occurred");

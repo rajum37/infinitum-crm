@@ -32,10 +32,10 @@ export default function FeaturesAdminPage() {
   }, []);
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
-    const newStatus = currentStatus === "ACTIVE" ? "ARCHIVED" : "ACTIVE";
+    const newStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     try {
       const res = await fetch(`/api/admin/features/${id}`, {
-        method: "PUT",
+        method: "PATCH", // Update to use PATCH based on the latest route.ts
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("nexus-token")}`,
@@ -94,7 +94,7 @@ export default function FeaturesAdminPage() {
               <tr className="bg-nexus-hover/50 text-nexus-text-secondary text-xs uppercase tracking-wider border-b border-nexus-border">
                 <th className="px-6 py-4 font-semibold">Name & Code</th>
                 <th className="px-6 py-4 font-semibold">Type</th>
-                <th className="px-6 py-4 font-semibold">Properties</th>
+                <th className="px-6 py-4 font-semibold">Attributes</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
                 <th className="px-6 py-4 font-semibold text-right">Actions</th>
               </tr>

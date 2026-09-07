@@ -46,7 +46,7 @@ export function DashboardClient({
             onMenuClick={() => setSidebarOpen(!sidebarOpen)}
             showMenuButton
           />
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto overscroll-y-none">
             <div className="p-3 sm:p-4 md:p-6">{children}</div>
           </main>
         </div>

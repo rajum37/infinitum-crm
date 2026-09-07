@@ -21,7 +21,14 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.json(entitlements);
+    // Fix BigInt serialization globally
+    const serialized = JSON.parse(
+      JSON.stringify(entitlements, (key, value) =>
+        typeof value === "bigint" ? value.toString() : value
+      )
+    );
+
+    return NextResponse.json(serialized);
   } catch (error: any) {
     console.error("Failed to fetch admin entitlements:", error);
     return NextResponse.json({ error: "Failed to fetch entitlements" }, { status: 500 });

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { IconPlus, IconEdit, IconTrash, IconEye, IconEyeOff, IconCheck, IconX } from "@tabler/icons-react";
 import { SuccessPopup } from "@/components/common/SuccessPopup";
+
 
 export default function PlansAdminPage() {
   const [plans, setPlans] = useState<any[]>([]);
@@ -27,9 +28,9 @@ export default function PlansAdminPage() {
     }
   };
 
-  useEffect(() => {
-    fetchPlans();
-  }, []);
+useEffect(() => {
+  fetchPlans();
+}, []);
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "ACTIVE" ? "ARCHIVED" : "ACTIVE";

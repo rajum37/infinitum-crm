@@ -37,38 +37,81 @@ export async function POST(request: Request) {
     const auth = await requireAuthenticatedUser(request);
     if (auth instanceof Response) return auth;
     const { payload, user: authUser } = auth;
-    
+
     const roleError = requireRole(payload.role, ["SUPER_ADMIN"]);
     if (roleError) return roleError;
 
     const body = await request.json();
-    const { code, name, description, planType, basePrice, billingInterval, currency, isCustom, isVisible, maxUsers, storageLimitMB } = body;
+    console.log('POST /api/admin/plans body:', JSON.stringify(body, null, 2));
+    const { code, name, description, status, isPublic, isDefault, prices, features } = body;
 
-    if (!code || !name) {
+    const trimmedCode = (code || "").trim().toUpperCase().replace(/\s+/g, "_");
+    const trimmedName = (name || "").trim();
+
+    if (!trimmedCode || !trimmedName) {
       return NextResponse.json({ error: "Code and name are required" }, { status: 400 });
     }
 
-    const cleanCode = code.trim().toUpperCase().replace(/\s+/g, "_");
-    const existingPlan = await prisma.plan.findUnique({ where: { code: cleanCode } });
+    const existingPlan = await prisma.plan.findUnique({ where: { code: trimmedCode } });
     if (existingPlan) {
-      return NextResponse.json({ error: "Plan code already exists" }, { status: 409 });
+      return NextResponse.json({ error: "A plan with this code already exists" }, { status: 409 });
     }
 
-    const plan = await prisma.plan.create({
-      data: {
-        code: cleanCode,
-        name,
-        description,
-        status: "ACTIVE",
-        planType: planType || "TIERED",
-        basePrice: basePrice || 0,
-        billingInterval: billingInterval || "MONTHLY",
-        currency: currency || "USD",
-        isCustom: isCustom || false,
-        isVisible: isVisible !== undefined ? isVisible : true,
-        maxUsers,
-        storageLimitMB,
-      },
+    let plan;
+    await prisma.$transaction(async (tx) => {
+      if (isDefault) {
+        await tx.plan.updateMany({ data: { isDefault: false } });
+      }
+
+      // Create plan record
+      plan = await tx.plan.create({
+        data: {
+          code: trimmedCode,
+          name: trimmedName,
+          description,
+          status: status || "ACTIVE",
+          planType: "STANDARD",
+          basePrice: 0,
+          billingInterval: "MONTH",
+          currency: "INR",
+          isPublic: isPublic !== undefined ? isPublic : true,
+          isDefault: isDefault || false,
+        },
+      });
+
+      // Create pricing rows if provided
+      if (Array.isArray(prices) && prices.length) {
+        const priceCreates = prices.map((p: any) => tx.planPrice.create({
+          data: {
+            planId: plan.id,
+            code: `${trimmedCode}_${p.billingInterval}_v1`,
+            billingInterval: p.billingInterval,
+            currency: p.currency,
+            amount: p.amount,
+            originalAmount: p.originalAmount ?? undefined,
+            trailingDays: p.trailingDays || 0,
+            isActive: p.isActive ?? true,
+            isDefault: p.isDefault ?? false,
+            version: 1,
+          },
+        }));
+        await Promise.all(priceCreates);
+      }
+
+      // Create feature rows if provided
+      if (Array.isArray(features) && features.length) {
+        const featureCreates = features.map((f: any) => tx.planFeature.create({
+          data: {
+            planId: plan.id,
+            featureId: f.featureId,
+            enabled: f.enabled,
+            limitType: f.limitType ?? undefined,
+            limitValue: f.limitValue ?? undefined,
+            configuration: f.configuration ?? undefined,
+          },
+        }));
+        await Promise.all(featureCreates);
+      }
     });
 
     await logAuditEvent({
@@ -82,7 +125,7 @@ export async function POST(request: Request) {
       summary: `Created platform plan: ${plan.code}`,
     });
 
-    return NextResponse.json(plan, { status: 201 });
+    return NextResponse.json({ success: true, plan }, { status: 201 });
   } catch (error: any) {
     console.error("POST /api/admin/plans error:", error);
     return NextResponse.json({ error: error?.message || "Failed to create plan" }, { status: 500 });

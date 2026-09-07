@@ -2,6 +2,7 @@
 
 import React, { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { apiClient } from "@/lib/apiClient";
 import {
   IconLock,
   IconEye,
@@ -71,24 +72,22 @@ function AccountSetupPageClient() {
 
     async function fetchTokenInfo() {
       try {
-        const res = await fetch(`/api/auth/setup-account?token=${encodeURIComponent(token!)}`);
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "This setup link has expired or is no longer valid.");
-          if (data.expired) {
-            setExpiredContext({
-              role: data.role,
-              company: data.company,
-              expired: true,
-              code: data.code,
-            });
-          }
-        } else {
-          setAccountContext(data.user);
+        const data = await apiClient.get(`/api/auth/setup-account?token=${encodeURIComponent(token!)}`);
+        setAccountContext(data.user);
+      } catch (err: any) {
+        setError(err.message || "This setup link has expired or is no longer valid.");
+        if (err.data?.expired) {
+          setExpiredContext({
+            role: err.data.role,
+            company: err.data.company,
+            expired: true,
+            code: err.data.code,
+          });
         }
-      } catch (err) {
-        setError("Failed to verify setup token. Please try again.");
       } finally {
+        setLoading(false);
+      }
+    }
         setLoading(false);
       }
     }
@@ -110,15 +109,7 @@ function AccountSetupPageClient() {
     setError(null);
 
     try {
-      const res = await fetch("/api/auth/setup-account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to activate account");
-      }
+      await apiClient.post("/api/auth/setup-account", { token, password });
       setSuccess(true);
     } catch (err: any) {
       setError(err.message || "An error occurred");
