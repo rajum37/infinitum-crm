@@ -27,9 +27,15 @@ export function getIpFromRequest(request: Request): string {
 
 export async function logAuditEvent(options: LogAuditOptions) {
   try {
+    // Format action: remove underscores and capitalize each word
+    const formattedAction = (options.action || "")
+      .split("_")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+
     return await prisma.auditLog.create({
       data: {
-        action: options.action,
+        action: formattedAction,
         metadata: {
           category: options.category || "User Management",
           severity: options.severity || "INFO",

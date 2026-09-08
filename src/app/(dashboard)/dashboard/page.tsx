@@ -16,6 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
+import { SkeletonPage } from "@/components/ui/Skeleton";
 
 interface AuditLogEntry {
   id: string;
@@ -97,8 +98,8 @@ export default function DashboardPage() {
           }
 
           if (auditRes.ok) {
-            const logs = await auditRes.json();
-            setRecentActivity(logs || []);
+            const resData = await auditRes.json();
+            setRecentActivity(resData?.data || (Array.isArray(resData) ? resData : []));
           }
         } else {
           // Admin or User -> Customer Dashboard
@@ -131,12 +132,8 @@ export default function DashboardPage() {
     fetchOverview();
   }, [isMounted, effectiveRole]);
 
-  if (!isMounted) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="w-6 h-6 border-2 border-[#10D078] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+  if (!isMounted || loading) {
+    return <SkeletonPage />;
   }
 
   const isSuperAdmin = effectiveRole === "SUPER_ADMIN";

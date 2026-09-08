@@ -62,6 +62,7 @@ interface CompanyItem {
   adminCount: number;
   userCount: number;
   totalMembers: number;
+  ownerUserId?: string;
 }
 
 type ModalMode = "create" | "edit" | "view" | null;
@@ -70,15 +71,15 @@ type ModalMode = "create" | "edit" | "view" | null;
 
 const ROLE_BADGE: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   SUPER_ADMIN: { label: "Super Admin", color: "text-red-400 bg-red-500/10 border-red-500/25", icon: <IconCrown size={11} /> },
-  ADMIN:       { label: "Admin",       color: "text-orange-400 bg-orange-500/10 border-orange-500/25", icon: <IconUserShield size={11} /> },
-  USER:        { label: "User",        color: "text-blue-400 bg-blue-500/10 border-blue-500/25", icon: <IconUser size={11} /> },
+  ADMIN: { label: "Admin", color: "text-orange-400 bg-orange-500/10 border-orange-500/25", icon: <IconUserShield size={11} /> },
+  USER: { label: "User", color: "text-blue-400 bg-blue-500/10 border-blue-500/25", icon: <IconUser size={11} /> },
 };
 
 const STATUS_BADGE: Record<string, { label: string; color: string }> = {
-  ACTIVE:   { label: "Active",   color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/25" },
+  ACTIVE: { label: "Active", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/25" },
   INACTIVE: { label: "Inactive", color: "text-gray-400 bg-gray-500/10 border-gray-500/25" },
-  PENDING:  { label: "Pending",  color: "text-amber-400 bg-amber-500/10 border-amber-500/25" },
-  EXPIRED:  { label: "Invitation Expired", color: "text-rose-400 bg-rose-500/10 border-rose-500/25" },
+  PENDING: { label: "Pending", color: "text-amber-400 bg-amber-500/10 border-amber-500/25" },
+  EXPIRED: { label: "Invitation Expired", color: "text-rose-400 bg-rose-500/10 border-rose-500/25" },
 };
 
 function formatDate(d?: string) {
@@ -104,6 +105,7 @@ function UserRow({
   u, currentUserId, currentUserRole, onView, onEdit, onToggleStatus, onSoftDelete, onResendInvitation,
   companyIsDeactivated, adminIsDeactivated, companyCategory, creatorName,
   showUserCountColumn = false, showCreatedBy = false, showRoleColumn = false, showActions = true,
+  isCurrentUserOwner = false, isTargetOwner = false,
 }: {
   u: AppUser;
   currentUserId?: string;
@@ -116,6 +118,8 @@ function UserRow({
   showCreatedBy?: boolean;
   showRoleColumn?: boolean;
   showActions?: boolean;
+  isCurrentUserOwner?: boolean;
+  isTargetOwner?: boolean;
   onView: (u: AppUser) => void;
   onEdit: (u: AppUser) => void;
   onToggleStatus: (u: AppUser) => void;
@@ -131,19 +135,21 @@ function UserRow({
 
   const isTargetAdmin = u.role === "ADMIN" || u.role === "SUPER_ADMIN";
   const isLoggedAdminSelf = currentUserRole === "ADMIN" && isTargetAdmin && isMe;
-  const isLoggedAdminOtherAdmin = currentUserRole === "ADMIN" && isTargetAdmin && !isMe;
+  const cannotEditOwner = currentUserRole === "ADMIN" && !isMe && isTargetOwner && !isCurrentUserOwner;
+  const isLoggedAdminOtherAdmin = currentUserRole === "ADMIN" && isTargetAdmin && !isMe && !isCurrentUserOwner;
+  const hideActions = cannotEditOwner || isLoggedAdminOtherAdmin;
 
   const tooltipText = companyIsDeactivated
     ? "Company is inactive — activate company first"
     : adminIsDeactivated
-    ? "Admin account is inactive — activate admin account first"
-    : "";
+      ? "Admin account is inactive — activate admin account first"
+      : "";
 
   const statusLabel = companyIsDeactivated
     ? "Company Inactive"
     : adminIsDeactivated
-    ? "Admin Inactive"
-    : statusBadge.label;
+      ? "Admin Inactive"
+      : statusBadge.label;
 
   return (
     <tr className={`hover:bg-nexus-hover/30 transition-colors ${!u.isActive || isBlockedFromActivation ? "opacity-60 bg-red-500/5" : ""}`}>
@@ -194,7 +200,7 @@ function UserRow({
 
       {showActions && (
         <td className="p-3">
-          {isLoggedAdminOtherAdmin ? (
+          {hideActions ? (
             <div className="flex items-center justify-end pr-2 text-nexus-muted/40 font-mono text-[11px]">—</div>
           ) : isLoggedAdminSelf ? (
             <div className="flex items-center gap-1 justify-end">
@@ -284,9 +290,8 @@ function AdminRow({
     <tr className="hover:bg-nexus-hover/50 transition-colors border-t border-nexus-border">
       <td className="p-3 pl-4">
         <div className="flex items-center gap-2.5">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-            admin.role === "SUPER_ADMIN" ? "bg-red-500/10 text-red-400" : "bg-orange-500/10 text-orange-400"
-          }`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${admin.role === "SUPER_ADMIN" ? "bg-red-500/10 text-red-400" : "bg-orange-500/10 text-orange-400"
+            }`}>
             {admin.name.charAt(0).toUpperCase()}
           </div>
           <div>
@@ -918,6 +923,52 @@ export default function UserManagementPage() {
     }
   }
 
+  if (loading && adminGroups.length === 0 && users.length === 0) {
+    return (
+      <div className="p-6 space-y-6 max-w-[1600px] mx-auto animate-pulse">
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex gap-2 items-center">
+            <div className="w-10 h-10 bg-nexus-border/40 rounded-xl"></div>
+            <div className="h-8 w-48 bg-nexus-border/50 rounded-lg"></div>
+          </div>
+          <div className="flex gap-2">
+            <div className="h-9 w-9 bg-nexus-border/40 rounded-lg"></div>
+            {!isSuperAdmin && <div className="h-9 w-32 bg-nexus-primary/20 rounded-lg"></div>}
+          </div>
+        </div>
+
+        {/* Cards Skeleton */}
+        <div className={`grid grid-cols-1 sm:grid-cols-${isSuperAdmin ? "3" : "2"} lg:grid-cols-${isSuperAdmin ? "3" : "4"} gap-4`}>
+          {[...Array(isSuperAdmin ? 3 : 4)].map((_, i) => (
+            <div key={i} className="bg-nexus-card border border-nexus-border rounded-xl p-4 flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <div className="h-4 w-24 bg-nexus-border/40 rounded"></div>
+                <div className="h-8 w-8 bg-nexus-border/30 rounded-lg"></div>
+              </div>
+              <div className="h-8 w-16 bg-nexus-border/50 rounded mt-2"></div>
+              <div className="h-3 w-32 bg-nexus-border/30 rounded mt-1"></div>
+            </div>
+          ))}
+        </div>
+
+        {/* Filters Skeleton */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="h-9 flex-1 min-w-[200px] bg-nexus-border/40 rounded-lg"></div>
+          <div className="h-9 w-36 bg-nexus-border/40 rounded-lg"></div>
+          {isSuperAdmin && <div className="h-9 w-36 bg-nexus-border/40 rounded-lg"></div>}
+        </div>
+
+        {/* Content Skeleton */}
+        <div className="space-y-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-20 w-full bg-nexus-card border border-nexus-border/50 rounded-xl"></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 text-nexus-text">
 
@@ -1051,7 +1102,7 @@ export default function UserManagementPage() {
               </div>
             </div>
             <p className="text-2xl font-extrabold text-emerald-400 mt-2">{companyActiveMemberCount}</p>
-            <p className="text-[11px] text-emerald-500/70 mt-2 font-medium">Active & Enabled</p>
+            <p className="text-[11px] text-emerald-500/70 mt-2 font-medium">Active</p>
           </div>
 
           {/* Inactive Members */}
@@ -1189,12 +1240,24 @@ export default function UserManagementPage() {
                     ? (myAdminAccount.isActive === false || myAdminAccount.status === "INACTIVE")
                     : false;
 
+                  let ownerUserId: string | undefined = undefined;
+                  if (userCompId) {
+                    ownerUserId = companies.find((c) => c.id === userCompId)?.ownerUserId;
+                  } else if (userCompName) {
+                    ownerUserId = companies.find((c) => (c.name || "").toLowerCase().trim() === (userCompName || "").toLowerCase().trim())?.ownerUserId;
+                  }
+
+                  const isCurrentUserOwner = ownerUserId === currentUser?.id;
+                  const isTargetOwner = ownerUserId === u.id;
+
                   return (
                     <UserRow
                       key={u.id}
                       u={u}
                       currentUserId={currentUser?.id}
                       currentUserRole={currentUser?.role}
+                      isCurrentUserOwner={isCurrentUserOwner}
+                      isTargetOwner={isTargetOwner}
                       showRoleColumn={true}
                       companyIsDeactivated={compIsInactive}
                       adminIsDeactivated={adminIsInactive}
@@ -1236,110 +1299,108 @@ export default function UserManagementPage() {
             </div>
 
             <div className="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Full Name *</label>
-                    <input value={formName} onChange={(e) => setFormName(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary font-medium" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Email *</label>
-                    <input type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)}
-                      readOnly={modalMode === "edit"}
-                      className={`w-full px-3 py-2 text-sm border rounded-lg text-nexus-text focus:outline-none ${
-                        modalMode === "edit"
-                          ? "bg-nexus-hover border-nexus-border text-nexus-muted cursor-not-allowed font-medium"
-                          : "bg-nexus-bg border-nexus-border focus:border-nexus-primary font-medium"
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Full Name *</label>
+                  <input value={formName} onChange={(e) => setFormName(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary font-medium" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Email *</label>
+                  <input type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)}
+                    readOnly={modalMode === "edit"}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg text-nexus-text focus:outline-none ${modalMode === "edit"
+                      ? "bg-nexus-hover border-nexus-border text-nexus-muted cursor-not-allowed font-medium"
+                      : "bg-nexus-bg border-nexus-border focus:border-nexus-primary font-medium"
                       }`} />
-                  </div>
+                </div>
+              </div>
+
+              <div className={`grid ${isSuperAdmin ? "grid-cols-2" : "grid-cols-1"} gap-3`}>
+                <div>
+                  <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Phone Number</label>
+                  <input
+                    type="text"
+                    inputMode="tel"
+                    maxLength={15}
+                    value={formPhone}
+                    onChange={(e) => setFormPhone(e.target.value.replace(/[^0-9+\-\s()]/g, "").slice(0, 15))}
+                    className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary font-mono tracking-wider"
+                  />
                 </div>
 
-                <div className={`grid ${isSuperAdmin ? "grid-cols-2" : "grid-cols-1"} gap-3`}>
+                {(!isSuperAdmin || modalMode === "create") && (
                   <div>
-                    <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Phone Number</label>
-                    <input
-                      type="text"
-                      inputMode="tel"
-                      maxLength={15}
-                      value={formPhone}
-                      onChange={(e) => setFormPhone(e.target.value.replace(/[^0-9+\-\s()]/g, "").slice(0, 15))}
-                      className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary font-mono tracking-wider"
-                    />
-                  </div>
-
-                  {(!isSuperAdmin || modalMode === "create") && (
-                    <div>
-                      <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Role *</label>
-                      <select
-                        value={formRole}
-                        onChange={(e) => setFormRole(e.target.value as "ADMIN" | "USER")}
-                        disabled={modalMode === "edit"}
-                        className={`w-full px-3 py-2 text-sm border rounded-lg text-nexus-text focus:outline-none ${
-                          modalMode === "edit"
-                            ? "bg-nexus-hover border-nexus-border text-nexus-muted cursor-not-allowed font-medium"
-                            : "bg-nexus-bg border-nexus-border focus:border-nexus-primary font-medium"
+                    <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Role *</label>
+                    <select
+                      value={formRole}
+                      onChange={(e) => setFormRole(e.target.value as "ADMIN" | "USER")}
+                      disabled={modalMode === "edit"}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg text-nexus-text focus:outline-none ${modalMode === "edit"
+                        ? "bg-nexus-hover border-nexus-border text-nexus-muted cursor-not-allowed font-medium"
+                        : "bg-nexus-bg border-nexus-border focus:border-nexus-primary font-medium"
                         }`}
-                      >
-                        {isSuperAdmin && <option value="SUPER_ADMIN">Super Admin</option>}
-                        {(isSuperAdmin || (companies.find(c => c.id === (currentUser?.companyId || myAdminObj?.companyId || ""))?.ownerUserId === currentUser?.id)) && (
-                          <option value="ADMIN">Admin</option>
-                        )}
-                        <option value="USER">User</option>
-                      </select>
-                    </div>
-                  )}
+                    >
+                      {isSuperAdmin && <option value="SUPER_ADMIN">Super Admin</option>}
+                      {(isSuperAdmin || (companies.find(c => c.id === (currentUser?.companyId || myAdminObj?.companyId || ""))?.ownerUserId === currentUser?.id)) && (
+                        <option value="ADMIN">Admin</option>
+                      )}
+                      <option value="USER">User</option>
+                    </select>
+                  </div>
+                )}
 
-                  {isSuperAdmin && (
-                    <div>
-                      <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Company *</label>
-                      <select
-                        value={formCompanyId}
-                        onChange={(e) => {
-                          setFormCompanyId(e.target.value);
-                          const matched = companies.find((c) => c.id === e.target.value);
-                          if (matched) setFormCompanyName(matched.name);
-                        }}
-                        className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary"
-                      >
-                        <option value="">Select Company</option>
-                        {companies.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-
-
-                {isSuperAdmin && modalMode === "create" && (
+                {isSuperAdmin && (
                   <div>
-                    <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Assign to Admin</label>
-                    <select value={formAdminId} onChange={(e) => setFormAdminId(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary">
-                      <option value="">— Unassigned (created by Super Admin) —</option>
-                      {adminGroups.filter((a) => a.role === "ADMIN").map((a) => (
-                        <option key={a.id} value={a.id}>{a.name} ({a.email})</option>
+                    <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Company *</label>
+                    <select
+                      value={formCompanyId}
+                      onChange={(e) => {
+                        setFormCompanyId(e.target.value);
+                        const matched = companies.find((c) => c.id === e.target.value);
+                        if (matched) setFormCompanyName(matched.name);
+                      }}
+                      className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary"
+                    >
+                      <option value="">Select Company</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
                   </div>
                 )}
               </div>
 
-              <div className="flex justify-end gap-3 px-6 py-4 border-t border-nexus-border">
-                <button onClick={closeModal} disabled={formSaving}
-                  className="px-4 py-2 text-sm font-semibold text-nexus-muted hover:text-nexus-text border border-nexus-border rounded-lg hover:bg-nexus-hover transition-colors disabled:opacity-50">
-                  Cancel
-                </button>
-                <button onClick={handleSave} disabled={formSaving}
-                  className="px-5 py-2 text-sm font-bold bg-nexus-primary text-black rounded-lg hover:bg-nexus-primary/90 transition-colors shadow-lg shadow-nexus-primary/20 disabled:opacity-60 flex items-center justify-center gap-2">
-                  {formSaving && <IconLoader2 size={16} className="animate-spin" />}
-                  {formSaving ? "Saving…" : modalMode === "create" ? "Create User" : "Save Changes"}
-                </button>
-              </div>
+
+
+              {isSuperAdmin && modalMode === "create" && (
+                <div>
+                  <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Assign to Admin</label>
+                  <select value={formAdminId} onChange={(e) => setFormAdminId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary">
+                    <option value="">— Unassigned (created by Super Admin) —</option>
+                    {adminGroups.filter((a) => a.role === "ADMIN").map((a) => (
+                      <option key={a.id} value={a.id}>{a.name} ({a.email})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-nexus-border">
+              <button onClick={closeModal} disabled={formSaving}
+                className="px-4 py-2 text-sm font-semibold text-nexus-muted hover:text-nexus-text border border-nexus-border rounded-lg hover:bg-nexus-hover transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={handleSave} disabled={formSaving}
+                className="px-5 py-2 text-sm font-bold bg-nexus-primary text-black rounded-lg hover:bg-nexus-primary/90 transition-colors shadow-lg shadow-nexus-primary/20 disabled:opacity-60 flex items-center justify-center gap-2">
+                {formSaving && <IconLoader2 size={16} className="animate-spin" />}
+                {formSaving ? "Saving…" : modalMode === "create" ? "Create User" : "Save Changes"}
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
       {/* Soft Delete User Modal */}
       {confirmSoftDeleteUser && (
@@ -1431,11 +1492,10 @@ export default function UserManagementPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-nexus-card border border-nexus-border rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center space-y-4">
-              <div className={`w-14 h-14 rounded-full border flex items-center justify-center mx-auto ${
-                confirmToggleStatusUser.isActive
-                  ? "bg-red-500/10 border-red-500/20 text-red-400"
-                  : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-              }`}>
+              <div className={`w-14 h-14 rounded-full border flex items-center justify-center mx-auto ${confirmToggleStatusUser.isActive
+                ? "bg-red-500/10 border-red-500/20 text-red-400"
+                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                }`}>
                 {confirmToggleStatusUser.isActive ? <IconX size={26} /> : <IconCheck size={26} />}
               </div>
               <div>
@@ -1462,11 +1522,10 @@ export default function UserManagementPage() {
               <button
                 onClick={() => handleToggleStatus(confirmToggleStatusUser)}
                 disabled={actionLoading}
-                className={`flex-1 px-4 py-2.5 text-sm font-bold text-black rounded-xl shadow-lg disabled:opacity-60 flex items-center justify-center gap-2 ${
-                  confirmToggleStatusUser.isActive
-                    ? "bg-red-500 hover:bg-red-400 shadow-red-500/25"
-                    : "bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/25"
-                }`}
+                className={`flex-1 px-4 py-2.5 text-sm font-bold text-black rounded-xl shadow-lg disabled:opacity-60 flex items-center justify-center gap-2 ${confirmToggleStatusUser.isActive
+                  ? "bg-red-500 hover:bg-red-400 shadow-red-500/25"
+                  : "bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/25"
+                  }`}
               >
                 {actionLoading && <IconLoader2 size={16} className="animate-spin" />}
                 {actionLoading ? "Processing…" : confirmToggleStatusUser.isActive ? "Deactivate" : "Activate"}

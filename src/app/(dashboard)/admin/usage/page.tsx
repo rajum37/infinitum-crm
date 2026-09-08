@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { IconChartBar } from "@tabler/icons-react";
 
+import { SkeletonTable } from "@/components/ui/Skeleton";
+
 export default function AdminUsagePage() {
   const [usage, setUsage] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +22,18 @@ export default function AdminUsagePage() {
     }
     loadData();
   }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-6 text-nexus-text">
+        <div className="animate-pulse">
+          <div className="h-8 bg-nexus-border/50 rounded-lg w-48 mb-2"></div>
+          <div className="h-4 bg-nexus-border/30 rounded-lg w-80"></div>
+        </div>
+        <SkeletonTable rows={5} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 text-nexus-text">
@@ -44,9 +58,7 @@ export default function AdminUsagePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-nexus-border">
-              {loading ? (
-                <tr><td colSpan={5} className="px-6 py-8 text-center text-nexus-muted text-sm">Loading usage data...</td></tr>
-              ) : usage.length === 0 ? (
+              {usage.length === 0 ? (
                 <tr><td colSpan={5} className="px-6 py-8 text-center text-nexus-muted text-sm">No usage records found.</td></tr>
               ) : (
                 usage.map((u) => (
