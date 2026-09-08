@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { IconCreditCard } from "@tabler/icons-react";
 
+import { SkeletonTable } from "@/components/ui/Skeleton";
+
 export default function AdminBillingPage() {
   const [billing, setBilling] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +22,18 @@ export default function AdminBillingPage() {
     }
     loadData();
   }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-6 text-nexus-text">
+        <div className="animate-pulse">
+          <div className="h-8 bg-nexus-border/50 rounded-lg w-64 mb-2"></div>
+          <div className="h-4 bg-nexus-border/30 rounded-lg w-96"></div>
+        </div>
+        <SkeletonTable rows={4} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 text-nexus-text">
@@ -42,9 +56,7 @@ export default function AdminBillingPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-nexus-border">
-              {loading ? (
-                <tr><td colSpan={3} className="px-6 py-8 text-center text-nexus-muted text-sm">Loading billing data...</td></tr>
-              ) : billing.length === 0 ? (
+              {billing.length === 0 ? (
                 <tr><td colSpan={3} className="px-6 py-8 text-center text-nexus-muted text-sm">No billing customers found.</td></tr>
               ) : (
                 billing.map((b) => (

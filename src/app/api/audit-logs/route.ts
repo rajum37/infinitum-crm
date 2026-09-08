@@ -23,25 +23,48 @@ export async function GET(request: Request) {
     const search    = searchParams.get("search") || "";
     const category  = searchParams.get("category") || "";
     const severity  = searchParams.get("severity") || "";
-    const limit     = searchParams.get("limit") ? parseInt(searchParams.get("limit") as string, 10) : 1000;
-    const action    = searchParams.get("action") || "";
     const from      = searchParams.get("from") || "";
     const to        = searchParams.get("to") || "";
+    const page      = searchParams.get("page") ? parseInt(searchParams.get("page") as string, 10) : 1;
+    const limit     = searchParams.get("limit") ? parseInt(searchParams.get("limit") as string, 10) : 10;
+    const offset    = (page - 1) * limit;
 
-    // Build dynamic Prisma where clause
-    const where: any = {};
+    let whereSql = `1=1`;
+    const params: any[] = [];
+    let paramIndex = 1;
 
     if (search) {
-      where.action = { contains: search, mode: "insensitive" };
+      whereSql += ` AND (
+        action ILIKE $${paramIndex} OR 
+        metadata->>'actorName' ILIKE $${paramIndex} OR 
+        metadata->>'actorEmail' ILIKE $${paramIndex} OR 
+        metadata->>'summary' ILIKE $${paramIndex} OR 
+        metadata->>'targetName' ILIKE $${paramIndex}
+      )`;
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    if (category) {
+      whereSql += ` AND metadata->>'category' = $${paramIndex}`;
+      params.push(category);
+      paramIndex++;
+    }
+
+    if (severity) {
+      whereSql += ` AND metadata->>'severity' = $${paramIndex}`;
+      params.push(severity);
+      paramIndex++;
+    }
+
+    const action = searchParams.get("action") || "";
+    if (action) {
+      whereSql += ` AND action = $${paramIndex}`;
+      params.push(action);
+      paramIndex++;
     }
 
     let allowedEmails: string[] | null = null;
-
-    // AuditLog has no companyId column, so an ADMIN's visibility is scoped by intersecting
-    // their existing search filter with the set of actor emails belonging to their own
-    // company (themselves + users/admins they created or that share their company) — a
-    // SUPER_ADMIN sees everything, matching how every other admin-facing list in this app
-    // is company-scoped for ADMIN and unrestricted for SUPER_ADMIN.
     if (payload.role === "ADMIN") {
       const adminUser = await prisma.user.findUnique({
         where: { id: payload.userId },
@@ -62,61 +85,80 @@ export async function GET(request: Request) {
         select: { email: true },
       });
       allowedEmails = companyUsers.map((u) => u.email);
-    }
 
-    if (from || to) {
-      where.createdAt = {};
-      if (from) where.createdAt.gte = new Date(from);
-      if (to) {
-        // include the full "to" day
-        const toDate = new Date(to);
-        toDate.setHours(23, 59, 59, 999);
-        where.createdAt.lte = toDate;
+      if (allowedEmails.length === 0) {
+        whereSql += ` AND 1=0`;
+      } else {
+        whereSql += ` AND metadata->>'actorEmail' = ANY($${paramIndex}::text[])`;
+        params.push(allowedEmails);
+        paramIndex++;
       }
     }
 
-    const logs = await prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: limit,
-    });
+    if (from) {
+      whereSql += ` AND created_at >= $${paramIndex}`;
+      params.push(new Date(from));
+      paramIndex++;
+    }
 
-    // In-memory filtering for metadata fields that were moved out of schema
-    let filteredLogs = logs.filter((log) => {
-      const meta: any = log.metadata || {};
-      
-      if (category && meta.category !== category) return false;
-      if (severity && meta.severity !== severity) return false;
-      
-      if (search && !log.action.toLowerCase().includes(search.toLowerCase())) {
-        const searchLower = search.toLowerCase();
-        const matchesMeta = 
-          (meta.actorName && meta.actorName.toLowerCase().includes(searchLower)) ||
-          (meta.actorEmail && meta.actorEmail.toLowerCase().includes(searchLower)) ||
-          (meta.summary && meta.summary.toLowerCase().includes(searchLower)) ||
-          (meta.targetName && meta.targetName.toLowerCase().includes(searchLower));
-        
-        if (!matchesMeta) return false;
-      }
+    if (to) {
+      const toDate = new Date(to);
+      toDate.setHours(23, 59, 59, 999);
+      whereSql += ` AND created_at <= $${paramIndex}`;
+      params.push(toDate);
+      paramIndex++;
+    }
 
-      if (allowedEmails && meta.actorEmail) {
-        if (!allowedEmails.includes(meta.actorEmail)) return false;
-      } else if (allowedEmails && !meta.actorEmail) {
-        return false;
-      }
+    const countResult = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT 
+         COUNT(*) as total,
+         SUM(CASE WHEN metadata->>'severity' = 'SUCCESS' THEN 1 ELSE 0 END) as success_count,
+         SUM(CASE WHEN metadata->>'severity' = 'WARNING' THEN 1 ELSE 0 END) as warning_count,
+         SUM(CASE WHEN metadata->>'severity' = 'DANGER' THEN 1 ELSE 0 END) as danger_count
+       FROM audit_logs WHERE ${whereSql}`,
+      ...params
+    );
+    const totalItems = Number(countResult[0].total);
+    const successCount = Number(countResult[0].success_count || 0);
+    const warningCount = Number(countResult[0].warning_count || 0);
+    const dangerCount = Number(countResult[0].danger_count || 0);
 
-      return true;
-    });
+    const idsResult = await prisma.$queryRawUnsafe<{id: string}[]>(
+      `SELECT id FROM audit_logs WHERE ${whereSql} ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      ...params,
+      limit,
+      offset
+    );
+    
+    const ids = idsResult.map((r: any) => r.id);
+
+    let logs: any[] = [];
+    if (ids.length > 0) {
+      logs = await prisma.auditLog.findMany({
+        where: { id: { in: ids } },
+        orderBy: { createdAt: "desc" },
+      });
+    }
 
     // Remap metadata fields to top level so UI doesn't break
-    const finalLogs = filteredLogs.slice(0, 500).map(log => ({
+    const finalLogs = logs.map(log => ({
       ...log,
       ...((log.metadata as any) || {})
     }));
 
-    return NextResponse.json(finalLogs);
-  } catch (error) {
+    return NextResponse.json({
+      data: finalLogs,
+      total: totalItems,
+      stats: {
+        success: successCount,
+        warning: warningCount,
+        danger: dangerCount
+      },
+      page,
+      limit
+    });
+  } catch (error: any) {
     console.error("GET /api/audit-logs error:", error);
-    return NextResponse.json({ error: "Failed to fetch audit logs" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch audit logs", details: error.message, stack: error.stack }, { status: 500 });
   }
 }

@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { IconAdjustments } from "@tabler/icons-react";
 
+import { SkeletonTable } from "@/components/ui/Skeleton";
+
 export default function AdminEntitlementsPage() {
   const [entitlements, setEntitlements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +22,18 @@ export default function AdminEntitlementsPage() {
     }
     loadData();
   }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-6 text-nexus-text">
+        <div className="animate-pulse">
+          <div className="h-8 bg-nexus-border/50 rounded-lg w-64 mb-2"></div>
+          <div className="h-4 bg-nexus-border/30 rounded-lg w-96"></div>
+        </div>
+        <SkeletonTable rows={5} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 text-nexus-text">
@@ -43,9 +57,7 @@ export default function AdminEntitlementsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-nexus-border">
-              {loading ? (
-                <tr><td colSpan={4} className="px-6 py-8 text-center text-nexus-muted text-sm">Loading overrides...</td></tr>
-              ) : entitlements.length === 0 ? (
+              {entitlements.length === 0 ? (
                 <tr><td colSpan={4} className="px-6 py-8 text-center text-nexus-muted text-sm">No active overrides found.</td></tr>
               ) : (
                 entitlements.map((e) => (

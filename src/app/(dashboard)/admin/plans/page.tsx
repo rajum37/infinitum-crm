@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { IconPlus, IconEdit, IconTrash, IconEye, IconEyeOff, IconCheck, IconX } from "@tabler/icons-react";
 import { SuccessPopup } from "@/components/common/SuccessPopup";
+import { SkeletonTable } from "@/components/ui/Skeleton";
 
 
 export default function PlansAdminPage() {
@@ -69,6 +70,21 @@ useEffect(() => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6 text-nexus-text">
+        <div className="flex items-center justify-between animate-pulse">
+          <div>
+            <div className="h-8 bg-nexus-border/50 rounded-lg w-32 mb-2"></div>
+            <div className="h-4 bg-nexus-border/30 rounded-lg w-64"></div>
+          </div>
+          <div className="h-10 w-32 bg-nexus-primary/20 rounded-xl"></div>
+        </div>
+        <SkeletonTable rows={4} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 text-nexus-text">
       {success && <SuccessPopup message={success} type="success" onClose={() => setSuccess(null)} />}
@@ -102,13 +118,7 @@ useEffect(() => {
               </tr>
             </thead>
             <tbody className="divide-y divide-nexus-border">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-nexus-muted text-sm">
-                    Loading plans...
-                  </td>
-                </tr>
-              ) : plans.length === 0 ? (
+              {plans.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-nexus-muted text-sm">
                     No plans found.

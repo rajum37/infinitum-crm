@@ -231,6 +231,38 @@ export default function LeadMetricsPage() {
       return b.total - a.total;
     });
 
+  if (loading && leads.length === 0) {
+    return (
+      <div className="space-y-6 text-nexus-text font-sans pb-10 animate-pulse">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-nexus-border pb-4">
+          <div>
+            <div className="h-6 w-48 bg-nexus-border/50 rounded mb-2"></div>
+            <div className="h-3 w-80 bg-nexus-border/30 rounded"></div>
+          </div>
+          <div className="h-9 w-40 bg-nexus-border/40 rounded-lg"></div>
+        </div>
+        
+        {/* 4 Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-nexus-card border border-nexus-border rounded-xl p-4">
+              <div className="flex justify-between mb-2">
+                <div className="h-3 w-20 bg-nexus-border/30 rounded"></div>
+                <div className="h-6 w-6 bg-nexus-border/40 rounded-md"></div>
+              </div>
+              <div className="h-8 w-24 bg-nexus-border/50 rounded mb-2"></div>
+              <div className="h-3 w-32 bg-nexus-border/20 rounded"></div>
+            </div>
+          ))}
+        </div>
+
+        {/* Content (Table area) */}
+        <div className="bg-nexus-card border border-nexus-border rounded-xl h-64 mt-6"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 text-nexus-text font-sans pb-10">
       {/* Top Header Bar with Date Range Filter */}

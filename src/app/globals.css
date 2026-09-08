@@ -35,6 +35,11 @@
     @apply bg-nexus-bg text-nexus-text;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Prevent modal backdrops from inheriting space-y margins */
+  .fixed.inset-0 {
+    margin: 0 !important;
+  }
 }
 
 /* Custom scrollbar for NEXUS dark theme */

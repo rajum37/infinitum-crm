@@ -78,17 +78,6 @@ const SEVERITY_CONFIG: Record<string, { label: string; bg: string; text: string;
   DANGER:  { label: "Critical", bg: "bg-red-500/10",     text: "text-red-400",     border: "border-red-500/25",     icon: IconFlame        },
 };
 
-const ACTION_LABELS: Record<string, string> = {
-  USER_LOGIN: "User Login", USER_LOGOUT: "User Logout", LOGIN_FAILED: "Login Failed",
-  USER_CREATED: "User Created", USER_DELETED: "User Deleted",
-  PASSWORD_RESET: "Password Reset", PASSWORD_CHANGED: "Password Changed",
-  ROLE_UPDATED: "Role Updated", STATUS_TOGGLED: "Status Toggled",
-  LEAD_CREATED: "Lead Created", LEAD_UPDATED: "Lead Updated", LEAD_DELETED: "Lead Deleted",
-  DEAL_CREATED: "Deal Created", DEAL_UPDATED: "Deal Updated", DEAL_DELETED: "Deal Deleted",
-  PERMISSIONS_UPDATED: "Permissions Updated",
-  API_KEY_CREATED: "API Key Created", API_KEY_DELETED: "API Key Deleted",
-};
-
 // ─── Date Range Picker Component ─────────────────────────────────────────────
 
 interface DateRangePickerProps {
@@ -329,11 +318,13 @@ function DateRangePicker({ from, to, onChange, onClear }: DateRangePickerProps) 
 
 export default function AuditLogsPage() {
   const [logs, setLogs]                         = useState<AuditLog[]>([]);
-  const [allLogs, setAllLogs]                   = useState<AuditLog[]>([]);
+  const [totalLogs, setTotalLogs]               = useState(0);
+  const [stats, setStats]                       = useState({ success: 0, warning: 0, danger: 0 });
   const [allCategories, setAllCategories]       = useState<string[]>([]);
   const [allActions, setAllActions]             = useState<string[]>([]);
   const [loading, setLoading]                   = useState(true);
   const [search, setSearch]                     = useState("");
+  const [debouncedSearch, setDebouncedSearch]   = useState("");
   const [filterCategory, setFilterCategory]     = useState("");
   const [filterSeverity, setFilterSeverity]     = useState("");
   const [filterAction, setFilterAction]         = useState("");
@@ -341,63 +332,66 @@ export default function AuditLogsPage() {
   const [dateTo, setDateTo]                     = useState<Date | null>(null);
   const [viewLog, setViewLog]                   = useState<AuditLog | null>(null);
   const [autoRefresh, setAutoRefresh]           = useState(false);
+  
+  const [page, setPage]                         = useState(1);
+  const [itemsPerPage, setItemsPerPage]         = useState(10);
+  
   const intervalRef                             = useRef<NodeJS.Timeout | null>(null);
 
   const token = () =>
     typeof window !== "undefined" ? localStorage.getItem("nexus-token") || "" : "";
 
-  // Fetch ALL logs from the server — filtering is client-side
+  // Debounce search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [search]);
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`/api/audit-logs`, {
+      const params = new URLSearchParams();
+      params.set("page", page.toString());
+      params.set("limit", itemsPerPage.toString());
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (filterCategory) params.set("category", filterCategory);
+      if (filterSeverity) params.set("severity", filterSeverity);
+      if (filterAction) params.set("action", filterAction);
+      if (dateFrom) params.set("from", dateFrom.toISOString());
+      if (dateTo) params.set("to", dateTo.toISOString());
+
+      const res = await fetch(`/api/audit-logs?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token()}` },
       });
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setAllLogs(data);
-        setAllCategories(Array.from(new Set(data.map((l: AuditLog) => l.category))).sort() as string[]);
-        setAllActions(Array.from(new Set(data.map((l: AuditLog) => l.action))).sort() as string[]);
+      const resData = await res.json();
+      
+      if (resData && resData.data) {
+        setLogs(resData.data);
+        setTotalLogs(resData.total || 0);
+        if (resData.stats) {
+          setStats(resData.stats);
+        }
+        
+        // We could extract distinct categories/actions if we wanted, but since it's paginated,
+        // we might not get all of them. In a real app, these would come from a distinct query.
+        // For now, we rely on the ones we know or accumulate them.
+        setAllCategories(prev => Array.from(new Set([...prev, ...resData.data.map((l: AuditLog) => l.category)])));
+        setAllActions(prev => Array.from(new Set([...prev, ...resData.data.map((l: AuditLog) => l.action)])));
+      } else if (Array.isArray(resData)) {
+        setLogs(resData);
+        setTotalLogs(resData.length);
       }
     } catch {
       console.error("Failed to load audit logs");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, itemsPerPage, debouncedSearch, filterCategory, filterSeverity, filterAction, dateFrom, dateTo]);
 
-  // Client-side filtering — instant, no network request
-  useEffect(() => {
-    let filtered = allLogs;
-
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter((l) =>
-        l.actorName.toLowerCase().includes(q) ||
-        l.actorEmail.toLowerCase().includes(q) ||
-        l.summary.toLowerCase().includes(q) ||
-        l.action.toLowerCase().includes(q) ||
-        (l.targetName || "").toLowerCase().includes(q)
-      );
-    }
-
-    if (filterCategory) filtered = filtered.filter((l) => l.category === filterCategory);
-    if (filterSeverity) filtered = filtered.filter((l) => l.severity === filterSeverity);
-    if (filterAction)   filtered = filtered.filter((l) => l.action   === filterAction);
-
-    if (dateFrom) {
-      const from = new Date(dateFrom); from.setHours(0, 0, 0, 0);
-      filtered = filtered.filter((l) => new Date(l.createdAt) >= from);
-    }
-    if (dateTo) {
-      const to = new Date(dateTo); to.setHours(23, 59, 59, 999);
-      filtered = filtered.filter((l) => new Date(l.createdAt) <= to);
-    }
-
-    setLogs(filtered);
-  }, [allLogs, search, filterCategory, filterSeverity, filterAction, dateFrom, dateTo]);
-
-  // Initial fetch
+  // Initial fetch & refetch on filter change
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
   // Auto-refresh every 30 s
@@ -410,30 +404,105 @@ export default function AuditLogsPage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [autoRefresh, fetchLogs]);
 
-  // Export CSV — current filtered view
-  function exportCSV() {
-    const headers = ["Timestamp","Performed By","Role","Action","Category","Target","Summary","Severity","IP"];
-    const rows    = logs.map((l) => [
+  const exportCSV = useCallback(() => {
+    if (logs.length === 0) return;
+    const header = ["Date & Time", "Actor", "Role", "Action", "Category", "Target", "Summary", "Severity", "IP Address"];
+    const rows = logs.map(l => [
       formatDateTime(l.createdAt),
       `${l.actorName} (${l.actorEmail})`,
       l.actorRole || "",
-      ACTION_LABELS[l.action] || l.action,
+      l.action,
       l.category, l.targetName || "", l.summary, l.severity, l.ipAddress || "",
     ]);
     const csv  = "data:text/csv;charset=utf-8," +
-      [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+      [header.join(","), ...rows.map(r => r.map(x => `"${(x || "").toString().replace(/"/g, '""')}"`).join(","))].join("\n");
     const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csv));
-    link.setAttribute("download", `audit_logs_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    link.href = encodeURI(csv);
+    link.download = `audit-logs-${formatShortDate(new Date())}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [logs]);
+
+  function handleFilterChange(setter: any, value: any) {
+    setter(value);
+    setPage(1);
   }
 
   function clearFilters() {
-    setSearch(""); setFilterCategory(""); setFilterSeverity("");
-    setFilterAction(""); setDateFrom(null); setDateTo(null);
+    setSearch(""); 
+    setDebouncedSearch("");
+    setFilterCategory(""); 
+    setFilterSeverity("");
+    setFilterAction(""); 
+    setDateFrom(null); 
+    setDateTo(null);
+    setPage(1);
   }
 
   const hasActiveFilters = search || filterCategory || filterSeverity || filterAction || dateFrom || dateTo;
+
+  if (loading && logs.length === 0) {
+    return (
+      <div className="space-y-6 text-nexus-text max-w-[1600px] mx-auto animate-pulse">
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex gap-3 items-center">
+            <div className="w-12 h-12 bg-nexus-border/40 rounded-xl"></div>
+            <div className="space-y-2">
+              <div className="h-6 w-32 bg-nexus-border/50 rounded"></div>
+              <div className="h-3 w-64 bg-nexus-border/30 rounded"></div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <div className="h-9 w-24 bg-nexus-border/40 rounded-lg"></div>
+            <div className="h-9 w-9 bg-nexus-border/40 rounded-lg"></div>
+            <div className="h-9 w-28 bg-nexus-border/40 rounded-lg"></div>
+          </div>
+        </div>
+
+        {/* Stats Skeletons */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-nexus-card border border-nexus-border rounded-xl p-4 flex gap-3 items-center">
+              <div className="w-10 h-10 bg-nexus-border/40 rounded-xl"></div>
+              <div className="space-y-2">
+                <div className="h-3 w-16 bg-nexus-border/30 rounded"></div>
+                <div className="h-5 w-8 bg-nexus-border/50 rounded"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Filters Skeleton */}
+        <div className="bg-nexus-card border border-nexus-border rounded-xl p-4 h-24">
+          <div className="h-4 w-20 bg-nexus-border/30 rounded mb-4"></div>
+          <div className="flex gap-3">
+            <div className="h-9 w-1/4 bg-nexus-border/40 rounded-lg"></div>
+            <div className="h-9 w-1/5 bg-nexus-border/40 rounded-lg"></div>
+            <div className="h-9 w-1/5 bg-nexus-border/40 rounded-lg"></div>
+            <div className="h-9 w-1/5 bg-nexus-border/40 rounded-lg"></div>
+          </div>
+        </div>
+
+        {/* Table Skeleton */}
+        <div className="bg-nexus-card border border-nexus-border rounded-xl overflow-hidden">
+          <div className="h-10 bg-nexus-bg/40 border-b border-nexus-border"></div>
+          <div className="divide-y divide-nexus-border">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="px-5 py-4 flex gap-4">
+                <div className="h-4 w-1/6 bg-nexus-border/30 rounded"></div>
+                <div className="h-4 w-1/5 bg-nexus-border/30 rounded"></div>
+                <div className="h-4 w-1/6 bg-nexus-border/30 rounded"></div>
+                <div className="h-4 w-1/4 bg-nexus-border/30 rounded"></div>
+                <div className="h-8 w-8 bg-nexus-border/40 rounded ml-auto"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <PermissionGuard roles={["SUPER_ADMIN", "ADMIN"]}>
@@ -489,10 +558,10 @@ export default function AuditLogsPage() {
         {/* ── STAT CARDS ──────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Total Events",     value: allLogs.length,                                         color: "blue",    Icon: IconClock         },
-            { label: "Success",          value: allLogs.filter((l) => l.severity === "SUCCESS").length, color: "emerald", Icon: IconCheck         },
-            { label: "Warnings",         value: allLogs.filter((l) => l.severity === "WARNING").length, color: "amber",   Icon: IconAlertTriangle },
-            { label: "Critical Actions", value: allLogs.filter((l) => l.severity === "DANGER").length,  color: "red",     Icon: IconFlame         },
+            { label: "Total Events",     value: totalLogs,     color: "blue",    Icon: IconClock         },
+            { label: "Success",          value: stats.success, color: "emerald", Icon: IconCheck         },
+            { label: "Warnings",         value: stats.warning, color: "amber",   Icon: IconAlertTriangle },
+            { label: "Critical Actions", value: stats.danger,  color: "red",     Icon: IconFlame         },
           ].map(({ label, value, color, Icon }) => (
             <div key={label} className="bg-nexus-card border border-nexus-border rounded-xl p-4 flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl bg-${color}-500/10 text-${color}-400 flex items-center justify-center flex-shrink-0`}>
@@ -536,7 +605,7 @@ export default function AuditLogsPage() {
             {/* Category */}
             <select
               value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
+              onChange={(e) => handleFilterChange(setFilterCategory, e.target.value)}
               className="px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary"
             >
               <option value="">All Categories</option>
@@ -546,19 +615,19 @@ export default function AuditLogsPage() {
             {/* Action */}
             <select
               value={filterAction}
-              onChange={(e) => setFilterAction(e.target.value)}
+              onChange={(e) => handleFilterChange(setFilterAction, e.target.value)}
               className="px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary"
             >
               <option value="">All Actions</option>
               {allActions.map((a) => (
-                <option key={a} value={a}>{ACTION_LABELS[a] || a}</option>
+                <option key={a} value={a}>{a}</option>
               ))}
             </select>
 
             {/* Severity */}
             <select
               value={filterSeverity}
-              onChange={(e) => setFilterSeverity(e.target.value)}
+              onChange={(e) => handleFilterChange(setFilterSeverity, e.target.value)}
               className="px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary"
             >
               <option value="">All Severities</option>
@@ -572,15 +641,31 @@ export default function AuditLogsPage() {
             <DateRangePicker
               from={dateFrom}
               to={dateTo}
-              onChange={(f, t) => { setDateFrom(f); setDateTo(t); }}
-              onClear={() => { setDateFrom(null); setDateTo(null); }}
+              onChange={(f, t) => { setDateFrom(f); setDateTo(t); setPage(1); }}
+              onClear={() => { setDateFrom(null); setDateTo(null); setPage(1); }}
             />
 
             <span className="text-xs text-nexus-muted ml-auto whitespace-nowrap">
-              Showing {logs.length} of {allLogs.length} event{allLogs.length !== 1 ? "s" : ""}
+              {totalLogs} event{totalLogs !== 1 ? "s" : ""} found
               {hasActiveFilters ? " (filtered)" : ""}
             </span>
           </div>
+        </div>
+
+        {/* ── SHOW ENTRIES TOOLBAR ────────────────────────────────────────── */}
+        <div className="flex items-center gap-2 text-sm text-nexus-text mt-4">
+          <span>Show</span>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => { setItemsPerPage(Number(e.target.value)); setPage(1); }}
+            className="bg-nexus-card border border-nexus-border rounded-lg px-2 py-1.5 focus:outline-none focus:border-nexus-primary"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+          <span>entries</span>
         </div>
 
         {/* ── AUDIT LOGS TABLE ─────────────────────────────────────────────── */}
@@ -657,7 +742,7 @@ export default function AuditLogsPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4">
-                        <span className="text-xs font-bold text-nexus-text">{ACTION_LABELS[log.action] || log.action}</span>
+                        <span className="text-xs font-bold text-nexus-text">{log.action}</span>
                       </td>
                       <td className="px-5 py-4">
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-nexus-bg border border-nexus-border text-nexus-text-secondary">
@@ -688,6 +773,36 @@ export default function AuditLogsPage() {
             </table>
           </div>
         </div>
+
+        {/* Pagination Footer */}
+        {!loading && logs.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-nexus-text">
+            <div className="text-nexus-muted">
+              Showing {(page - 1) * itemsPerPage + 1} to {Math.min(page * itemsPerPage, totalLogs)} of {totalLogs} entries
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 bg-nexus-card border border-nexus-border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-nexus-hover transition-colors font-medium text-nexus-muted hover:text-nexus-text"
+              >
+                Previous
+              </button>
+              
+              <span className="px-3 py-1.5 font-bold bg-nexus-primary/10 text-nexus-primary border border-nexus-primary/20 rounded-lg">
+                {page}
+              </span>
+              
+              <button
+                onClick={() => setPage(p => Math.min(Math.ceil(totalLogs / itemsPerPage) || 1, p + 1))}
+                disabled={page >= Math.ceil(totalLogs / itemsPerPage)}
+                className="px-3 py-1.5 bg-nexus-card border border-nexus-border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-nexus-hover transition-colors font-medium text-nexus-muted hover:text-nexus-text"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── VIEW LOG DETAILS MODAL ────────────────────────────────────────── */}
         {viewLog && (
@@ -731,7 +846,7 @@ export default function AuditLogsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-[10px] text-nexus-muted font-semibold uppercase mb-0.5">Action</p>
-                    <p className="font-bold text-nexus-text text-xs">{ACTION_LABELS[viewLog.action] || viewLog.action}</p>
+                    <p className="font-bold text-nexus-text text-xs">{viewLog.action}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-nexus-muted font-semibold uppercase mb-0.5">Category</p>

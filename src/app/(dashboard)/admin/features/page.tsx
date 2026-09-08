@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { IconPlus, IconEdit, IconTrash, IconCheck, IconX, IconDatabase, IconToggleLeft } from "@tabler/icons-react";
 import { SuccessPopup } from "@/components/common/SuccessPopup";
+import { SkeletonTable } from "@/components/ui/Skeleton";
 
 export default function FeaturesAdminPage() {
   const [features, setFeatures] = useState<any[]>([]);
@@ -68,6 +69,21 @@ export default function FeaturesAdminPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6 text-nexus-text">
+        <div className="flex items-center justify-between animate-pulse">
+          <div>
+            <div className="h-8 bg-nexus-border/50 rounded-lg w-32 mb-2"></div>
+            <div className="h-4 bg-nexus-border/30 rounded-lg w-64"></div>
+          </div>
+          <div className="h-10 w-36 bg-nexus-primary/20 rounded-xl"></div>
+        </div>
+        <SkeletonTable rows={4} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 text-nexus-text">
       {success && <SuccessPopup message={success} type="success" onClose={() => setSuccess(null)} />}
@@ -100,13 +116,7 @@ export default function FeaturesAdminPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-nexus-border">
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-nexus-muted text-sm">
-                    Loading features...
-                  </td>
-                </tr>
-              ) : features.length === 0 ? (
+              {features.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-nexus-muted text-sm">
                     No features found.
