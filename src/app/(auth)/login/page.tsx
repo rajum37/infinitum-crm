@@ -3,7 +3,8 @@
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
-import { IconKey, IconX, IconCopy, IconCheck, IconLoader2, IconInfinity, IconEye, IconEyeOff } from "@tabler/icons-react";
+import { IconKey, IconX, IconLoader2, IconEye, IconEyeOff, IconMail, IconLock, IconInfinity, IconCopy, IconCheck } from "@tabler/icons-react";
+import { useAlert } from "@/providers/AlertProvider";
 import { apiClient } from "@/lib/apiClient";
 
 function LoginForm() {
@@ -11,20 +12,24 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/";
   const { setAuth } = useAuthStore();
+  const { showAlert } = useAlert();
 
   const initialError = searchParams.get("msg") || (searchParams.get("deactivated") ? "You don't have access to this portal or application. Please contact the Infinity Vibez team." : "");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState(initialError);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const storedError = sessionStorage.getItem("nexus-login-error");
       if (storedError) {
-        setError(storedError);
+        showAlert(storedError, "error");
         sessionStorage.removeItem("nexus-login-error");
+      }
+
+      if (initialError) {
+        showAlert(initialError, "error");
       }
 
       // Clean query string from browser URL bar to keep URL neat (http://localhost:3000/login)
@@ -36,29 +41,28 @@ function LoginForm() {
 
 
 
-  const isEmailError = /email does not exist/i.test(error);
-  const isPasswordError = /password is invalid/i.test(error);
-
   // Forgot password state
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [isForgotLoading, setIsForgotLoading] = useState(false);
-  const [forgotError, setForgotError] = useState("");
-  const [forgotResult, setForgotResult] = useState("");
-  const [copied, setCopied] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setIsLoading(true);
 
     try {
       const data = await apiClient.post("/api/auth/login", { email, password });
 
       setAuth(data.user, data.token);
-      router.replace(redirect);
+      
+      let dest = searchParams.get("redirect");
+      if (!dest || dest === "/") {
+        dest = data.user.role === "SUPER_ADMIN" ? "/dashboard" : "/leads/metrics";
+      }
+      
+      router.replace(dest);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      showAlert(err instanceof Error ? err.message : "Login failed", "error");
     } finally {
       setIsLoading(false);
     }
@@ -67,17 +71,16 @@ function LoginForm() {
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!forgotEmail) {
-      setForgotError("Email is required");
+      showAlert("Email is required", "error");
       return;
     }
     setIsForgotLoading(true);
-    setForgotError("");
     try {
       const data = await apiClient.post("/api/auth/forgot-password", { email: forgotEmail });
-      // Generic message regardless of whether the email exists — prevents account enumeration.
-      setForgotResult(data.message || "If an account exists for this email, we've sent password reset instructions.");
+      showAlert(data.message || "If an account exists for this email, we've sent password reset instructions.", "success");
+      setShowForgotModal(false);
     } catch (err) {
-      setForgotError(err instanceof Error ? err.message : "Failed to send reset link");
+      showAlert(err instanceof Error ? err.message : "Failed to send reset link", "error");
     } finally {
       setIsForgotLoading(false);
     }
@@ -105,21 +108,6 @@ function LoginForm() {
           className="bg-nexus-card border border-nexus-border rounded-xl p-6 space-y-5 animate-in fade-in slide-in-from-bottom-3 duration-300"
         >
 
-
-          {error && !isEmailError && !isPasswordError && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-xs sm:text-sm text-red-400 flex items-center justify-between gap-2 transition-all duration-300 animate-in fade-in slide-in-from-top-1">
-              <span>{error}</span>
-              <button
-                type="button"
-                onClick={() => setError("")}
-                className="text-red-400/70 hover:text-red-400 p-0.5 rounded transition-colors shrink-0"
-                title="Dismiss"
-              >
-                <IconX size={16} />
-              </button>
-            </div>
-          )}
-
           <div>
             <label
               htmlFor="email"
@@ -133,16 +121,11 @@ function LoginForm() {
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
-                if (isEmailError) setError("");
               }}
               placeholder="you@company.com"
               required
-              className={`w-full bg-nexus-bg border rounded-lg px-4 py-2.5 text-sm text-nexus-text placeholder:text-nexus-muted focus:outline-none focus:ring-1 ${isEmailError
-                ? "border-red-500/60 focus:border-red-500/60 focus:ring-red-500/20"
-                : "border-nexus-border focus:border-nexus-primary/50 focus:ring-nexus-primary/20"
-                }`}
+              className={`w-full bg-nexus-bg border rounded-lg px-4 py-2.5 text-sm text-nexus-text placeholder:text-nexus-muted focus:outline-none focus:ring-1 border-nexus-border focus:border-nexus-primary/50 focus:ring-nexus-primary/20`}
             />
-            {isEmailError && <p className="text-[11px] text-red-400 mt-1">{error}</p>}
           </div>
 
           <div>
@@ -159,14 +142,10 @@ function LoginForm() {
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
-                  if (isPasswordError) setError("");
                 }}
                 placeholder="••••••••"
                 required
-                className={`w-full bg-nexus-bg border rounded-lg pl-4 pr-10 py-2.5 text-sm text-nexus-text placeholder:text-nexus-muted focus:outline-none focus:ring-1 ${isPasswordError
-                  ? "border-red-500/60 focus:border-red-500/60 focus:ring-red-500/20"
-                  : "border-nexus-border focus:border-nexus-primary/50 focus:ring-nexus-primary/20"
-                  }`}
+                className={`w-full bg-nexus-bg border rounded-lg pl-4 pr-10 py-2.5 text-sm text-nexus-text placeholder:text-nexus-muted focus:outline-none focus:ring-1 border-nexus-border focus:border-nexus-primary/50 focus:ring-nexus-primary/20`}
               />
               <button
                 type="button"
@@ -178,7 +157,6 @@ function LoginForm() {
                 {showPassword ? <IconEyeOff size={17} /> : <IconEye size={17} />}
               </button>
             </div>
-            {isPasswordError && <p className="text-[11px] text-red-400 mt-1">{error}</p>}
           </div>
 
           <div className="flex justify-end -mt-2">
@@ -232,23 +210,6 @@ function LoginForm() {
             {/* Content */}
             <form onSubmit={handleForgotSubmit}>
               <div className="p-6 space-y-4">
-                {forgotError && (
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-xs text-red-400 animate-shake">
-                    {forgotError}
-                  </div>
-                )}
-
-                {forgotResult ? (
-                  <div className="space-y-4 animate-in fade-in duration-300">
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-3 text-xs text-emerald-400 font-semibold flex items-start gap-2">
-                      <IconCheck size={16} className="flex-shrink-0 mt-0.5" />
-                      <span>{forgotResult}</span>
-                    </div>
-                    <p className="text-xs text-nexus-text-secondary leading-relaxed">
-                      A secure link to reset your password has been sent. The link expires in 24 hours and can only be used once.
-                    </p>
-                  </div>
-                ) : (
                   <div className="space-y-4">
                     <p className="text-xs text-nexus-text-secondary leading-relaxed">
                       Enter the email address associated with your account, and we will send you a link to reset your password.
@@ -265,7 +226,6 @@ function LoginForm() {
                       />
                     </div>
                   </div>
-                )}
               </div>
 
               {/* Footer */}
@@ -275,9 +235,8 @@ function LoginForm() {
                   onClick={() => setShowForgotModal(false)}
                   className="px-4 py-2 text-sm font-semibold text-nexus-muted border border-nexus-border rounded-lg hover:bg-nexus-hover transition-colors"
                 >
-                  {forgotResult ? "Close" : "Cancel"}
+                  Cancel
                 </button>
-                {!forgotResult && (
                   <button
                     type="submit"
                     disabled={isForgotLoading}
@@ -286,7 +245,6 @@ function LoginForm() {
                     {isForgotLoading && <IconLoader2 size={14} className="animate-spin" />}
                     Send Reset Link
                   </button>
-                )}
               </div>
             </form>
           </div>

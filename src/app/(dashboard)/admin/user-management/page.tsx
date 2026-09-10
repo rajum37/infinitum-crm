@@ -24,7 +24,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { useAuthStore } from "@/store/auth";
-import { SuccessPopup } from "@/components/common/SuccessPopup";
+import toast from "react-hot-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -174,7 +174,7 @@ function UserRow({
         <td className="p-3">
           <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${roleBadge.color}`}>
             {roleBadge.icon}
-            {roleBadge.label}
+            {isTargetOwner && u.role === "ADMIN" ? "Admin / Owner" : roleBadge.label}
           </span>
         </td>
       )}
@@ -273,17 +273,19 @@ function UserRow({
 // ─── Admin Row (Flat) ─────────────────────────────────────────────────────────
 
 function AdminRow({
-  admin, currentUserId, onView, onEdit, onToggleStatus, onSoftDelete, showActions = true,
+  admin, currentUserId, onView, onEdit, onToggleStatus, onSoftDelete, showActions = true, isTargetOwner = false,
 }: {
   admin: AppUser;
   currentUserId?: string;
   showActions?: boolean;
+  isTargetOwner?: boolean;
   onView: (u: AppUser) => void;
   onEdit: (u: AppUser) => void;
   onToggleStatus: (u: AppUser) => void;
   onSoftDelete: (u: AppUser) => void;
 }) {
   const statusBadge = STATUS_BADGE[admin.status] ?? STATUS_BADGE.ACTIVE;
+  const roleBadge = ROLE_BADGE[admin.role] ?? ROLE_BADGE.ADMIN;
   const isMe = admin.id === currentUserId;
 
   return (
@@ -302,6 +304,13 @@ function AdminRow({
             <p className="text-[11px] text-nexus-muted">{admin.email}</p>
           </div>
         </div>
+      </td>
+
+      <td className="p-3">
+        <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${roleBadge.color}`}>
+          {roleBadge.icon}
+          {isTargetOwner && admin.role === "ADMIN" ? "Admin / Owner" : roleBadge.label}
+        </span>
       </td>
 
       <td className="p-3">
@@ -437,6 +446,7 @@ function CompanyAccordionCard({
                     <thead>
                       <tr className="border-b border-nexus-border text-[11px] uppercase text-nexus-muted font-semibold bg-nexus-bg/40">
                         <th className="p-3 pl-4">Admin</th>
+                        <th className="p-3">Role</th>
                         <th className="p-3">Status</th>
                         <th className="p-3">Phone</th>
                         <th className="p-3">Last Login</th>
@@ -450,6 +460,7 @@ function CompanyAccordionCard({
                           key={admin.id}
                           admin={admin}
                           currentUserId={currentUserId}
+                          isTargetOwner={admin.id === company.ownerUserId}
                           showActions={showActions}
                           onView={onView}
                           onEdit={onEdit}
@@ -550,7 +561,6 @@ export default function UserManagementPage() {
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [confirmSoftDeleteUser, setConfirmSoftDeleteUser] = useState<AppUser | null>(null);
   const [confirmToggleStatusUser, setConfirmToggleStatusUser] = useState<AppUser | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // Form State
@@ -567,11 +577,6 @@ export default function UserManagementPage() {
   const [setupLink, setSetupLink] = useState("");
   const [formSaving, setFormSaving] = useState(false);
 
-  function showToast(msg: string, type: "success" | "error") {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  }
-
   const [resendingId, setResendingId] = useState<string | null>(null);
 
   async function handleResendInvitation(u: AppUser) {
@@ -584,10 +589,10 @@ export default function UserManagementPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to resend invitation");
-      showToast(`Activation link resent to ${u.email}`, "success");
+      toast.success(`Activation link resent to ${u.email}`);
       fetchData(true);
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Error resending invitation", "error");
+      toast.error(e instanceof Error ? e.message : "Error resending invitation");
     } finally {
       setResendingId(null);
     }
@@ -626,7 +631,7 @@ export default function UserManagementPage() {
         setUsers(data);
       }
     } catch {
-      showToast("Failed to load user management data", "error");
+      toast.error("Failed to load user management data");
     } finally {
       if (!silent) setLoading(false);
     }
@@ -793,12 +798,12 @@ export default function UserManagementPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      showToast(`User "${u.name}" deleted successfully`, "success");
+      if (!res.ok) throw new Error(data.error || "Failed to delete user");
+      toast.success(`User "${u.name}" deleted successfully`);
       setConfirmSoftDeleteUser(null);
       fetchData(true);
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Error deleting user", "error");
+      toast.error(e instanceof Error ? e.message : "Error deleting user");
     } finally {
       setActionLoading(false);
     }
@@ -850,7 +855,7 @@ export default function UserManagementPage() {
 
   async function handleSave() {
     if (!formName.trim() || !formEmail.trim()) {
-      showToast("Name and email are required", "error");
+      toast.error("Name and email are required");
       return;
     }
     setFormSaving(true);
@@ -880,7 +885,10 @@ export default function UserManagementPage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to create user");
-        showToast(`User "${formName}" created successfully. Activation link sent to ${formEmail}`, "success");
+        
+        setGeneratedPassword(data.generatedPassword || "");
+        setSetupLink(data.setupLink || "");
+        toast.success(`User "${formName}" created successfully. Activation link sent to ${formEmail}`);
         fetchData(true);
         closeModal();
       } else if (modalMode === "edit" && selectedUser) {
@@ -891,12 +899,12 @@ export default function UserManagementPage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to update user");
-        showToast(`User "${formName}" updated successfully`, "success");
+        toast.success(`User "${formName}" updated successfully`);
         fetchData(true);
         closeModal();
       }
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Error saving", "error");
+      toast.error(e instanceof Error ? e.message : "Error saving");
     } finally {
       setFormSaving(false);
     }
@@ -912,12 +920,12 @@ export default function UserManagementPage() {
         body: JSON.stringify({ action: "toggle-status" }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      showToast(`"${u.name}" status updated to ${data.isActive ? "ACTIVE" : "INACTIVE"}`, "success");
+      if (!res.ok) throw new Error(data.error || "Failed to toggle user status");
+      toast.success(`"${u.name}" status updated to ${data.isActive ? "ACTIVE" : "INACTIVE"}`);
       setConfirmToggleStatusUser(null);
       fetchData(true);
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Error updating status", "error");
+      toast.error(e instanceof Error ? e.message : "Error updating status");
     } finally {
       setActionLoading(false);
     }
@@ -1329,7 +1337,7 @@ export default function UserManagementPage() {
                   />
                 </div>
 
-                {(!isSuperAdmin || modalMode === "create") && (
+                {modalMode === "create" && (
                   <div>
                     <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Role *</label>
                     <select

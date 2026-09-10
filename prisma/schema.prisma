@@ -70,6 +70,7 @@ model User {
   subscription_entitlement_overrides SubscriptionEntitlementOverride[]
   subscription_events                SubscriptionEvent[]
   usage_events                       UsageEvent[]
+  sessions                           Session[]
   companyRef                         Company?                          @relation(fields: [companyId], references: [id])
   ownedCompany                       Company?                          @relation("CompanyOwner")
 
@@ -332,6 +333,22 @@ model ActiveSession {
   lastSeenAt DateTime @default(now()) @map("last_seen_at")
 
   @@map("active_sessions")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  metadata         Json?
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshTokenHash])
+  @@map("sessions")
 }
 
 model Plan {

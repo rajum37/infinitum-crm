@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { IconArrowLeft, IconDeviceFloppy, IconLoader2, IconSettings, IconShieldLock } from "@tabler/icons-react";
-import { SuccessPopup } from "@/components/common/SuccessPopup";
+import toast from "react-hot-toast";
 import { apiClient } from "@/lib/apiClient";
 
 function classNames(...classes: (string | undefined | null | false)[]) {
@@ -23,8 +23,6 @@ export default function FeatureDetailsPage({ params }: { params: Promise<{ id: s
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const [feature, setFeature] = useState<any>({
     code: "",
@@ -52,7 +50,7 @@ export default function FeatureDetailsPage({ params }: { params: Promise<{ id: s
         const data = await apiClient.get(`/api/admin/features/${id}`);
         setFeature(data);
       } catch (err: any) {
-        setError(err.message);
+        toast.error(err.message);
       } finally {
         setLoading(false);
       }
@@ -63,7 +61,6 @@ export default function FeatureDetailsPage({ params }: { params: Promise<{ id: s
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    setError(null);
     try {
       const url = isNew ? "/api/admin/features" : `/api/admin/features/${id}`;
       const method = isNew ? "POST" : "PATCH"; // Using PATCH correctly
@@ -71,14 +68,14 @@ export default function FeatureDetailsPage({ params }: { params: Promise<{ id: s
       const data = await (method === "POST" ? apiClient.post(url, feature) : apiClient.patch(url, feature));
 
       setSaving(false);
-      setSuccess("Feature saved successfully!");
+      toast.success("Feature saved successfully!");
       if (isNew && data?.id) {
         // We will wait for the user to close the success modal, so we'll just leave it.
         // Or we can smoothly redirect without forcing a modal close:
         setTimeout(() => router.push(`/admin/features/${data.id}`), 1000);
       }
     } catch (err: any) {
-      setError(err.message);
+      toast.error(err.message);
       setSaving(false);
     }
   };
@@ -93,13 +90,6 @@ export default function FeatureDetailsPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="text-nexus-text">
-      {success && <SuccessPopup message={success} type="success" onClose={() => {
-        setSuccess(null);
-        if (!isNew) {
-          router.push('/admin/features');
-        }
-      }} />}
-      {error && <SuccessPopup message={error} type="error" onClose={() => setError(null)} />}
 
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-8">

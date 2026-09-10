@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loginUser, generateToken, requireAuthenticatedUser } from "@/lib/auth";
+import { loginUser, generateAccessToken, requireAuthenticatedUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent, getIpFromRequest } from "@/lib/audit";
 import { mergePermissionsForRole, getDefaultPermissionsForRole } from "@/lib/permissions";
@@ -20,11 +20,13 @@ export async function POST(request: Request) {
 
     let user: any;
     let token: string;
+    let refreshToken: string;
 
     try {
       const result = await loginUser(email, password);
       user  = result.user;
       token = result.token;
+      refreshToken = result.refreshToken;
     } catch (loginErr) {
       // Log failed login attempt
       await logAuditEvent({
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
     });
 
     const isSuper = user.role === "SUPER_ADMIN";
-    const resolvedCompany = isSuper ? "" : (userRecord?.company || userRecord?.companyRef?.name || userRecord?.department || user.company || user.department || "");
+    const resolvedCompany = userRecord?.company || userRecord?.companyRef?.name || userRecord?.department || user.company || user.department || "";
 
     // Compute effective page permissions (DB customizations merged over hardcoded defaults)
     // and embed them directly in the signed JWT — this is what middleware trusts for
@@ -95,7 +97,7 @@ export async function POST(request: Request) {
       console.error("Failed to fetch role permissions on login:", err);
     }
 
-    token = generateToken({
+    token = generateAccessToken({
       userId: user.id,
       email: user.email,
       role: user.role,
@@ -112,12 +114,19 @@ export async function POST(request: Request) {
         company:    resolvedCompany,
         companyId:  isSuper ? undefined : (userRecord?.companyId || user.companyId || undefined),
         department: isSuper ? "" : (user.department || resolvedCompany),
-      },
-      token,
+      }
     });
 
     // Set token as httpOnly cookie
-    response.cookies.set("nexus-token", token, {
+    response.cookies.set("nexus-access-token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 15 * 60, // 15 mins
+      path: "/",
+    });
+
+    response.cookies.set("nexus-refresh-token", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
