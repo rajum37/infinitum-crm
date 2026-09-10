@@ -74,12 +74,37 @@ export async function POST(request: Request) {
         company: true,
         companyId: true,
         department: true,
-        companyRef: { select: { name: true } },
+        category: true,
+        phone: true,
+        status: true,
+        isActive: true,
+        companyRef: { select: { id: true, name: true, category: true } },
       },
     });
 
     const isSuper = user.role === "SUPER_ADMIN";
     const resolvedCompany = userRecord?.company || userRecord?.companyRef?.name || userRecord?.department || user.company || user.department || "";
+    const companyIdVal = userRecord?.companyId || userRecord?.companyRef?.id || user.companyId || "";
+    const categoryVal = userRecord?.category || userRecord?.companyRef?.category || user.category || "";
+
+    let planName = "";
+    let isOwner = false;
+
+    if (companyIdVal) {
+      const company = await prisma.company.findUnique({
+        where: { id: companyIdVal },
+      });
+      if (company && company.ownerUserId === user.id) {
+        isOwner = true;
+      }
+      const sub = await prisma.subscription.findUnique({
+        where: { companyId: companyIdVal },
+        include: { plan: true },
+      });
+      if (sub && sub.plan) {
+        planName = sub.plan.name;
+      }
+    }
 
     // Compute effective page permissions (DB customizations merged over hardcoded defaults)
     // and embed them directly in the signed JWT — this is what middleware trusts for
@@ -111,9 +136,15 @@ export async function POST(request: Request) {
         email:      user.email,
         name:       user.name,
         role:       user.role,
+        status:     userRecord?.status || user.status || "ACTIVE",
+        isActive:   userRecord?.isActive ?? user.isActive ?? true,
+        isOwner:    isOwner,
         company:    resolvedCompany,
-        companyId:  isSuper ? undefined : (userRecord?.companyId || user.companyId || undefined),
+        companyId:  companyIdVal,
         department: isSuper ? "" : (user.department || resolvedCompany),
+        category:   categoryVal,
+        planName:   planName,
+        phone:      userRecord?.phone || user.phone || "",
       }
     });
 

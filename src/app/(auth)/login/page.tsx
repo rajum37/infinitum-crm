@@ -165,8 +165,6 @@ function LoginForm() {
               onClick={() => {
                 setShowForgotModal(true);
                 setForgotEmail("");
-                setForgotError("");
-                setForgotResult("");
               }}
               className="text-xs text-nexus-primary hover:underline font-medium focus:outline-none"
             >

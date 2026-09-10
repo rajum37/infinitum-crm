@@ -576,16 +576,15 @@ export default function UserManagementPage() {
   const [generatedPassword, setGeneratedPassword] = useState("");
   const [setupLink, setSetupLink] = useState("");
   const [formSaving, setFormSaving] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const [resendingId, setResendingId] = useState<string | null>(null);
 
   async function handleResendInvitation(u: AppUser) {
     setResendingId(u.id);
     try {
-      const token = localStorage.getItem("nexus-token");
       const res = await fetch(`/api/users/${u.id}/resend-invitation`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to resend invitation");
@@ -611,12 +610,9 @@ export default function UserManagementPage() {
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const token = localStorage.getItem("nexus-token");
-      const headers = { Authorization: `Bearer ${token}` };
-
       const [compRes, userRes] = await Promise.all([
-        fetch("/api/companies", { headers, cache: "no-store" }),
-        fetch(isSuperAdmin ? "/api/users?grouped=true" : "/api/users", { headers, cache: "no-store" }),
+        fetch("/api/companies", { cache: "no-store" }),
+        fetch(isSuperAdmin ? "/api/users?grouped=true" : "/api/users", { cache: "no-store" }),
       ]);
 
       const compData = await compRes.json();
@@ -792,10 +788,8 @@ export default function UserManagementPage() {
   async function handleSoftDeleteUser(u: AppUser) {
     setActionLoading(true);
     try {
-      const token = localStorage.getItem("nexus-token");
       const res = await fetch(`/api/users/${u.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete user");
@@ -824,6 +818,7 @@ export default function UserManagementPage() {
     setFormRole("USER"); setFormStatus("ACTIVE"); setFormAdminId("");
     setGeneratedPassword("");
     setSetupLink("");
+    setFormErrors({});
     setModalMode("create");
   }
 
@@ -836,6 +831,7 @@ export default function UserManagementPage() {
     setFormStatus(u.status); setFormAdminId(u.createdBy || "");
     setGeneratedPassword("");
     setSetupLink("");
+    setFormErrors({});
     setModalMode("edit");
   }
 
@@ -849,15 +845,40 @@ export default function UserManagementPage() {
     setSelectedUser(null);
     setGeneratedPassword("");
     setSetupLink("");
+    setFormErrors({});
   }
 
   // ── Save User ──────────────────────────────────────────────────────────────
 
   async function handleSave() {
-    if (!formName.trim() || !formEmail.trim()) {
-      toast.error("Name and email are required");
+    const errors: Record<string, string> = {};
+    let isValid = true;
+
+    if (!formName.trim()) { errors['name'] = 'Full Name is required'; isValid = false; }
+    if (!formEmail.trim()) { errors['email'] = 'Email is required'; isValid = false; }
+    else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formEmail)) {
+        errors['email'] = 'Please enter a valid email address';
+        isValid = false;
+      }
+    }
+
+    if (formPhone && !/^\d{1,10}$/.test(formPhone)) {
+      errors['phone'] = 'Phone number must be numeric and up to 10 digits';
+      isValid = false;
+    }
+
+    setFormErrors(errors);
+
+    if (!isValid) {
+      toast.error("Please fix the errors in the form.");
+      if (errors['name']) document.getElementById("formName")?.focus();
+      else if (errors['email']) document.getElementById("formEmail")?.focus();
+      else if (errors['phone']) document.getElementById("formPhone")?.focus();
       return;
     }
+
     setFormSaving(true);
     try {
       const token = localStorage.getItem("nexus-token");
@@ -880,7 +901,7 @@ export default function UserManagementPage() {
       if (modalMode === "create") {
         const res = await fetch("/api/users", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         const data = await res.json();
@@ -894,7 +915,7 @@ export default function UserManagementPage() {
       } else if (modalMode === "edit" && selectedUser) {
         const res = await fetch(`/api/users/${selectedUser.id}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         const data = await res.json();
@@ -913,10 +934,9 @@ export default function UserManagementPage() {
   async function handleToggleStatus(u: AppUser) {
     setActionLoading(true);
     try {
-      const token = localStorage.getItem("nexus-token");
       const res = await fetch(`/api/users/${u.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "toggle-status" }),
       });
       const data = await res.json();
@@ -1310,17 +1330,21 @@ export default function UserManagementPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Full Name *</label>
-                  <input value={formName} onChange={(e) => setFormName(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary font-medium" />
+                  <input id="formName" value={formName} onChange={(e) => { setFormName(e.target.value); setFormErrors(p => ({ ...p, name: '' })); }}
+                    className={`w-full px-3 py-2 text-sm bg-nexus-bg border rounded-lg text-nexus-text focus:outline-none font-medium ${
+                      formErrors['name'] ? "border-red-500/50 focus:border-red-500/50" : "border-nexus-border focus:border-nexus-primary"
+                    }`} />
+                  {formErrors['name'] && <p className="text-[10px] text-red-400 mt-1 font-semibold">{formErrors['name']}</p>}
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Email *</label>
-                  <input type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)}
+                  <input type="email" id="formEmail" value={formEmail} onChange={(e) => { setFormEmail(e.target.value); setFormErrors(p => ({ ...p, email: '' })); }}
                     readOnly={modalMode === "edit"}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg text-nexus-text focus:outline-none ${modalMode === "edit"
-                      ? "bg-nexus-hover border-nexus-border text-nexus-muted cursor-not-allowed font-medium"
-                      : "bg-nexus-bg border-nexus-border focus:border-nexus-primary font-medium"
+                    className={`w-full px-3 py-2 text-sm border rounded-lg text-nexus-text focus:outline-none font-medium ${modalMode === "edit"
+                      ? "bg-nexus-hover border-nexus-border text-nexus-muted cursor-not-allowed"
+                      : formErrors['email'] ? "bg-nexus-bg border-red-500/50 focus:border-red-500/50" : "bg-nexus-bg border-nexus-border focus:border-nexus-primary"
                       }`} />
+                  {formErrors['email'] && <p className="text-[10px] text-red-400 mt-1 font-semibold">{formErrors['email']}</p>}
                 </div>
               </div>
 
@@ -1329,12 +1353,16 @@ export default function UserManagementPage() {
                   <label className="text-xs font-semibold text-nexus-text-secondary mb-1 block">Phone Number</label>
                   <input
                     type="text"
-                    inputMode="tel"
-                    maxLength={15}
+                    id="formPhone"
+                    inputMode="numeric"
+                    maxLength={10}
                     value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value.replace(/[^0-9+\-\s()]/g, "").slice(0, 15))}
-                    className="w-full px-3 py-2 text-sm bg-nexus-bg border border-nexus-border rounded-lg text-nexus-text focus:outline-none focus:border-nexus-primary font-mono tracking-wider"
+                    onChange={(e) => { setFormPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setFormErrors(p => ({ ...p, phone: '' })); }}
+                    className={`w-full px-3 py-2 text-sm bg-nexus-bg border rounded-lg text-nexus-text focus:outline-none font-mono tracking-wider ${
+                      formErrors['phone'] ? "border-red-500/50 focus:border-red-500/50" : "border-nexus-border focus:border-nexus-primary"
+                    }`}
                   />
+                  {formErrors['phone'] && <p className="text-[10px] text-red-400 mt-1 font-semibold">{formErrors['phone']}</p>}
                 </div>
 
                 {modalMode === "create" && (

@@ -67,6 +67,13 @@ function getSuperAdminMenu(): MenuSection[] {
       ],
     },
     {
+      label: "USER MANAGEMENT",
+      icon: <IconUsers size={18} />,
+      items: [
+        { label: "User Management", href: "/admin/user-management" },
+      ],
+    },
+    {
       label: "SYSTEM",
       icon: <IconTool size={18} />,
       items: [

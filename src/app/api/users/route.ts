@@ -550,7 +550,7 @@ export async function POST(request: Request) {
     if (!isPublicRegistration && (assignedRole === "ADMIN" || assignedRole === "SUPER_ADMIN") && resolvedCompanyId) {
       const entitlements = await getEffectiveEntitlements(resolvedCompanyId);
       const maxAdminsFeature = entitlements.get("MAX_ADMINS");
-      
+
       if (maxAdminsFeature && maxAdminsFeature.limitValue !== null) {
         // Count existing admins (including pending ones, but ignoring deleted ones)
         const currentAdminCount = await prisma.user.count({
@@ -560,7 +560,7 @@ export async function POST(request: Request) {
             isDeleted: false,
           }
         });
-        
+
         if (currentAdminCount >= Number(maxAdminsFeature.limitValue)) {
           return NextResponse.json(
             { error: `You have reached the maximum number of admins (${maxAdminsFeature.limitValue}) allowed on your current plan.` },

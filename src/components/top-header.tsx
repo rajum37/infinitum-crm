@@ -136,19 +136,6 @@ export function TopHeader({ onMenuClick, showMenuButton }: TopHeaderProps = {}) 
                   <p className="text-[10px] text-nexus-muted truncate">
                     {effectiveUser?.email || ""}
                   </p>
-                  {!isSuperAdmin && (effectiveUser?.company || effectiveUser?.department) && (
-                    <p className="text-[10px] text-[#10D078] font-semibold truncate mt-0.5">
-                      {effectiveUser?.company || effectiveUser?.department}
-                    </p>
-                  )}
-                  <div className="mt-1.5">
-                    <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full border ${roleBadge.color}`}>
-                      {effectiveUser?.role === "SUPER_ADMIN" && <IconCrown size={8} />}
-                      {effectiveUser?.role === "ADMIN" && <IconUserShield size={8} />}
-                      {effectiveUser?.role === "USER" && <IconUsers size={8} />}
-                      {roleBadge.label}
-                    </span>
-                  </div>
                 </div>
               </div>
 
